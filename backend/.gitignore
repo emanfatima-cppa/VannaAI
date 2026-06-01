@@ -1,0 +1,19 @@
+# Environment variables
+.env
+.env.*
+
+# Virtual environments
+venv/
+.venv/
+
+chroma_db/
+db/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# IDE/Editor settings (optional but recommended)
+.vscode/
+.idea/

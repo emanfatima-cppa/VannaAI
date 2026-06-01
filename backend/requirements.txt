@@ -1,0 +1,25 @@
+fastapi
+uvicorn[standard]
+python-dotenv
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+
+# Vanna AI + Claude
+vanna[chromadb]
+anthropic
+
+# Database drivers
+pyodbc
+sqlalchemy
+
+# HTTP & async
+httpx
+aiofiles
+
+# Pydantic
+pydantic
+pydantic-settings
+# Feedback storage (lightweight)
+tinydb
+chromadb
