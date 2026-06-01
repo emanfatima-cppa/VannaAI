@@ -104,7 +104,7 @@ def run_query(instance_key: str, question: str) -> dict:
     """
     vn = get_vanna(instance_key)
     try:
-        sql = vn.generate_sql(question)
+        sql = vn.generate_sql(question=question, allow_llm_to_see_data=True)
 
         # ── Guard 1: nothing returned ────────────────────────────────────────
         if not sql:
