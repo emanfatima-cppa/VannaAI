@@ -229,6 +229,23 @@ DUMMY_TRAINING: dict[str, dict] = {
             Never return deleted records unless the user explicitly asks for deleted/historical data.
             """,
 
+            """
+            Meeting Status Convention:
+            Database stores meeting status as integers.
+
+            Status Mapping:
+            0 = Cancelled
+            1 = Pending
+            2 = Ended
+            3 = Completed
+            4 = Draft
+
+            Always convert user-friendly status names to these numeric values when
+            building SQL WHERE clauses. If the user asks for completed, pending,
+            draft, ended, or cancelled meetings, filter using the corresponding
+            numeric status value.
+            """,
+
             # ── Key Relationships Summary ─────────────────────────────────────────
             """
             Key table relationships:
@@ -249,6 +266,15 @@ DUMMY_TRAINING: dict[str, dict] = {
             """,
         ],
         "qa_pairs": [
+            {
+                "question" : "which meeting profiles are effective till 06-Jun-2026",
+                "sql" : """
+                    SELECT *
+                    FROM RuMeetingProfile
+                    WHERE RuMeetingProfile_EffectiveTo <= '2026-06-06'
+                    AND RuMeetingProfile_IsDeleted = 0
+                """
+            },
             {
                 "question": "list users of a meeting",
                 "sql": """

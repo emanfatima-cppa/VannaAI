@@ -12,8 +12,8 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 480
 
-    # Claude
-    anthropic_api_key: str
+    # OpenAI
+    openai_api_key: str
 
     # Vanna / Chroma
     chroma_persist_dir: str = "./chroma_db"
