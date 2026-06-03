@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     # CORS
     frontend_origins: list[str] = [
         "http://localhost:5173",
-        "http://192.168.11.123:5173",
+        "http://192.168.11.111:5173",
     ]
 
     class Config:
