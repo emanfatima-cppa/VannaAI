@@ -12,8 +12,8 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 480
 
-    # Claude
-    anthropic_api_key: str
+    # OpenAI
+    openai_api_key: str
 
     # Vanna / Chroma
     chroma_persist_dir: str = "./chroma_db"
@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     # CORS
     frontend_origins: list[str] = [
         "http://localhost:5173",
-        "http://192.168.11.216:5173",
+        "http://192.168.11.232:5173",
     ]
 
     class Config:

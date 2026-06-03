@@ -7,8 +7,7 @@ python-multipart
 
 # Vanna AI + Claude
 vanna[chromadb]
-anthropic
-
+openai
 # Database drivers
 pyodbc
 sqlalchemy
