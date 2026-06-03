@@ -1,7 +1,7 @@
 // src/services/api.js – axios client wired to FastAPI backend
 import axios from 'axios'
 
-const api = axios.create({ baseURL: 'http://192.168.11.123:8000/api' })
+const api = axios.create({ baseURL: 'http://192.168.11.111:8000/api' })
 
 // Attach JWT on every request
 api.interceptors.request.use((config) => {
