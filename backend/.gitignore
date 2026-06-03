@@ -6,8 +6,7 @@
 venv/
 .venv/
 
-chroma_db/
-db/
+
 
 # Python cache
 __pycache__/
