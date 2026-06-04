@@ -97,7 +97,7 @@ SYNONYM_MAP: dict[str, list[str]] = {
 
     # ── Minutes of Meeting ────────────────────────────────────────────────────
     "minutes": [
-        "mom", "minutes of meeting", "meeting notes", "notes",
+         "minutes of meeting", "meeting notes", "notes",
         "meeting records", "records", "proceedings", "summary",
         "meeting summary",
 

@@ -20,6 +20,160 @@ DUMMY_TRAINING: dict[str, dict] = {
             - Organizations (RuOrganizations)
             """,
 
+             # ── MEETINGS ───────────────────────────────────────────
+            """Meetings are stored in the table MtMeetingHeader.  Every column in this
+            table is prefixed with MtMeetingHeader_.  A meeting (also called session,
+            meetup, meet up, gathering, bethak, conference) has the following key columns:
+            • MtMeetingHeader_Id          – primary key / unique meeting ID
+            • MtMeetingHeader_Title       – title / subject / heading / topic name
+            • MtMeetingHeader_Description – description / detail / agenda summary
+            • MtMeetingHeader_MeetingDate – date of the meeting (din / tareekh)
+            • MtMeetingHeader_MeetingStartTime – start time / timing / waqt
+            • MtMeetingHeader_Organizer   – organizer / host / created by / arranged by
+            • MtMeetingHeader_Meeting_Link – meeting link / online link / video link
+            • MtMeetingHeader_OtherAddress – physical address / venue
+            • MtMeetingHeader_Isdeleted   – soft-delete flag (always filter = 0)
+            • LuMeetingSphereLookups_StatusCode – meeting status (see Status section)
+            • MtCommitteeHeader_Id        – links the meeting to its committee
+            To show upcoming / future / next / aanay wali meetings filter MtMeetingHeader_MeetingDate >= CAST(GETDATE() AS DATE).
+            To show past / previous / pehle wali / already happened meetings filter MtMeetingHeader_MeetingDate < CAST(GETDATE() AS DATE).
+            For today's (aaj / aj) meetings filter CAST(MtMeetingHeader_MeetingDate AS DATE) = CAST(GETDATE() AS DATE).
+            For this week (iss haftay / is week) use DATEPART(WEEK,...) = DATEPART(WEEK,GETDATE()).
+            For this month (iss mahine / is month) use MONTH(...) = MONTH(GETDATE()).
+            To search meeting by name/title use LIKE: WHERE MtMeetingHeader_Title LIKE '%keyword%'""",
+
+            # ── MEETING STATUS ─────────────────────────────────────
+            """Meeting status is stored in the column LuMeetingSphereLookups_StatusCode
+            inside MtMeetingHeader.  Status synonyms: status, state, halat, situation.
+            Valid status values and their meaning:
+            • Draft      – draft, drafted, draft version, not published yet, incomplete
+            • Published  – published, released, live, announced, finalised
+            • Cancelled  – cancelled, canceled, cancel, stopped, nahin hogi
+            • Completed  – completed, done, finished, ended, ho chuki, khatam
+            • InProgress – in progress, ongoing, running, chal rahi, active
+            When someone asks about the status of a meeting always return
+            LuMeetingSphereLookups_StatusCode along with meeting title and ID.""",
+
+             # ── AGENDAS ────────────────────────────────────────────
+            """Meeting agendas are stored in MtMeetingAgenda.  Every column is prefixed
+            with MtMeetingAgenda_.  An agenda (also called topic, point, discussion item,
+            task, kya discuss hua, agenda item, agendaa, agnda, ageda) belongs to a meeting
+            through the foreign key MtMeetingHeader_Id.  Key columns:
+            • MtMeetingAgenda_Id        – primary key
+            • MtMeetingHeader_Id        – foreign key linking to MtMeetingHeader
+            • MtMeetingAgenda_Title     – title / name of the agenda item
+            • MtMeetingAgenda_CreatedOn – creation timestamp
+            • MtMeetingAgenda_Isdeleted – soft-delete flag (always filter = 0)
+            To count agendas created until today:
+            SELECT COUNT(*) AS TotalAgendas FROM MtMeetingAgenda
+            WHERE MtMeetingAgenda_Isdeleted = 0 AND MtMeetingAgenda_CreatedOn <= GETDATE()""",
+
+             # ── USERS / EMPLOYEES ──────────────────────────────────
+            """Employees, users, staff, workers, people, and team members are all stored
+            in the RuUsers table.  Key columns:
+            • RuUsers_Id               – primary key
+            • RuUsers_FirstName        – first name
+            • RuUsers_LastName         – last name
+            • RuUsers_DomainUserName   – domain / login username
+            • RuUsers_EmailAddress     – email address
+            • RuUsers_GenderCode       – gender stored as text: 'Female' or 'Male' (capital first letter)
+            • RuUsers_IsAdmin          – 1 if admin user
+            • RuUsers_IsDisabled       – 1 if account is disabled
+            • RuUsers_IsDeleted        – soft-delete flag (always filter = 0)
+            • RuOrganizations_Code     – the organisation this user belongs to (e.g. 'CPPA')
+            • RuUsers_DesignationCode  – job designation / title
+            • RuUsers_PrimaryContact   – primary phone number
+            Always filter RuUsers_IsDeleted = 0 to exclude removed accounts.""",
+
+                        # ── GENDER ─────────────────────────────────────────────
+                        """Gender is stored in the column RuUsers_GenderCode as full capitalised text.
+            IMPORTANT: The actual values in the database are 'Female' and 'Male' (capital F and M).
+            Do NOT use 'F' or 'M' single characters. Do NOT use LOWER() comparison.
+            Use exact match: WHERE RuUsers_GenderCode = 'Female'  OR  WHERE RuUsers_GenderCode = 'Male'
+
+            Female synonyms: female, females, woman, women, girl, girls, lady, ladies,
+            larki, larkiyan, aurat, auratein, khawateen, femlae, femail, grils, girs, femal, grl.
+
+            Male synonyms: male, males, man, men, boy, boys, larka, larkay, mard, aadmi,
+            mal, mle, boi, mens.
+
+            Correct SQL to list female users:
+            SELECT RuUsers_Id, RuUsers_FirstName, RuUsers_LastName, RuUsers_EmailAddress,
+                    RuUsers_GenderCode, RuUsers_DesignationCode
+            FROM RuUsers
+            WHERE RuUsers_IsDeleted = 0 AND RuUsers_GenderCode = 'Female'
+
+            Correct SQL to count female users:
+            SELECT COUNT(*) AS female_count FROM RuUsers
+            WHERE RuUsers_IsDeleted = 0 AND RuUsers_GenderCode = 'Female'
+
+            Correct SQL to list male users:
+            SELECT RuUsers_Id, RuUsers_FirstName, RuUsers_LastName, RuUsers_EmailAddress,
+                    RuUsers_GenderCode, RuUsers_DesignationCode
+            FROM RuUsers
+            WHERE RuUsers_IsDeleted = 0 AND RuUsers_GenderCode = 'Male'
+
+            Correct SQL to count male users:
+            SELECT COUNT(*) AS male_count FROM RuUsers
+            WHERE RuUsers_IsDeleted = 0 AND RuUsers_GenderCode = 'Male'""",
+
+                        # ── COMMITTEES ─────────────────────────────────────────
+                        """Committees (also called group, team, panel) are stored in
+            MtCommitteeHeader.  Key columns:
+            • MtCommitteeHeader_Id   – primary key
+            • MtCommitteeHeader_Name – committee name / title (search with LIKE '%name%')
+            • RuMeetingProfile_Id    – FK to RuMeetingProfile
+            • MtCommitteeHeader_IsDeleted – soft-delete flag (filter = 0)
+
+            Committee members, users, attendees, participants are stored in MtCommitteeUsers.
+            Key columns:
+            • MtCommitteeUsers_Id        – primary key
+            • MtCommitteeHeader_Id       – FK to committee
+            • RuUsers_Id                 – FK to RuUsers (the person)
+            • MtCommitteeUsers_RoleCode  – role of the person: 'Secretary', 'Chairman', 'Member', etc.
+            • MtCommitteeUsers_IsDeleted – soft-delete (filter = 0)
+
+            To find members/users of a committee join MtCommitteeUsers with RuUsers.
+            Do NOT use imaginary tables like MtMeetingUsers or MtCommitteeMembers.
+
+            To find a specific role (e.g. secretary, chairman) in a meeting or committee:
+            JOIN MtMeetingHeader m ON m.MtCommitteeHeader_Id = c.MtCommitteeHeader_Id
+            JOIN MtCommitteeUsers cu ON cu.MtCommitteeHeader_Id = c.MtCommitteeHeader_Id
+            JOIN RuUsers u ON u.RuUsers_Id = cu.RuUsers_Id
+            WHERE cu.MtCommitteeUsers_RoleCode LIKE '%Secretary%'
+
+            Meeting profiles are linked to committees through RuMeetingProfile via
+            RuMeetingProfile_Id. Meeting profile names are in RuMeetingProfile_Name.""",
+
+                        # ── DOCUMENTS & ATTACHMENTS ────────────────────────────
+                        """Files, attachments, documents (also: docs, upload, kagaz, file, attchment,
+            atachment) are stored in MtAttachment.  Key columns:
+            • MtAttachment_FileName      – file name
+            • MtAttachment_FileExtension – file extension
+            • MtAttachment_EcmFileId     – ECM / document management ID
+            • MtAttachment_Source        – type of parent record (e.g. 'MeetingAgenda', 'SharedDocument')
+            • MtAttachment_SourceId      – ID of the parent record
+            • MtAttachment_IsDeleted     – soft-delete (filter = 0)
+            Link attachments using MtAttachment_Source and MtAttachment_SourceId.
+
+            Shared documents (also: shared files, common documents, public documents) are
+            stored in MtSharedDocumentsHeader.  To get shared documents WITH file names:
+            SELECT sd.MtSharedDocumentsHeader_Id, att.MtAttachment_FileName,
+                    att.MtAttachment_FileExtension, att.MtAttachment_EcmFileId
+            FROM MtSharedDocumentsHeader sd
+            LEFT JOIN MtAttachment att
+                ON att.MtAttachment_Source = 'SharedDocument'
+            AND att.MtAttachment_SourceId = sd.MtSharedDocumentsHeader_Id
+            WHERE sd.MtSharedDocumentsHeader_IsDeleted = 0
+                AND att.MtAttachment_IsDeleted = 0""",
+
+                        # ── MINUTES OF MEETING ─────────────────────────────────
+                        """Minutes of Meeting (MOM) — also called minutes, meeting notes, summary,
+            meeting record, minits, momm, minutez, kya hua meeting mein — contain the
+            official record of what was discussed and decided in a meeting.  MOMs are
+            linked to their parent meeting through MtMeetingHeader_Id.""",
+
+
             # ── Table: MtCommitteeHeader ──────────────────────────────────────────
             """
             MtCommitteeHeader stores committee records.
@@ -245,7 +399,7 @@ DUMMY_TRAINING: dict[str, dict] = {
             draft, ended, or cancelled meetings, filter using the corresponding
             numeric status value.
             """,
-
+            "Gendercode can be male and female only",
             # ── Key Relationships Summary ─────────────────────────────────────────
             """
             Key table relationships:
@@ -266,6 +420,28 @@ DUMMY_TRAINING: dict[str, dict] = {
             """,
         ],
         "qa_pairs": [
+            {
+                "question": "name the male person from this meeting",
+                "sql": "gjh"
+            },
+            {
+                "question": "is there any guest whose name is Eman",
+                "sql": """
+                   SELECT DISTINCT
+                        u.RuUsers_Id,
+                        u.RuUsers_FirstName,
+                        u.RuUsers_LastName,
+                        u.RuUsers_EmailAddress,
+                        u.RuUsers_DomainUserName
+                    FROM RuUsers AS u
+                    INNER JOIN MtCommitteeUsers AS cu
+                        ON u.RuUsers_Id = cu.RuUsers_Id
+                    WHERE u.RuUsers_IsDeleted = 0
+                    AND cu.MtCommitteeUsers_Isdeleted = 0
+                    AND cu.RuRoles_Code LIKE '%member%'
+                    AND (u.RuUsers_FirstName LIKE '%Eman%' OR u.RuUsers_LastName LIKE '%Eman%');
+                """
+            },
             {
                 "question" : "which meeting profiles are effective till 06-Jun-2026",
                 "sql" : """
