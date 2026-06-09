@@ -271,7 +271,7 @@ def _validate_sql_against_schema(sql: str, schema: dict[str, list[str]]) -> Opti
     }
 
     col_tokens = re.findall(r'\b([A-Za-z_]\w*)\b', sql_no_strings)
-
+ 
     unknown_cols = [
         tok for tok in col_tokens
         if tok.upper() not in sql_keywords

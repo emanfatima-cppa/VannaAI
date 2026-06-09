@@ -19,16 +19,171 @@ from typing import Optional
 
 SYNONYM_MAP: dict[str, list[str]] = {
 
-    # ── People / membership ───────────────────────────────────────────────────
+#     # ── People / membership ───────────────────────────────────────────────────
+#     "members": [
+#         "participants", "attendees", "people", "persons", "individuals",
+#         "users", "invitees", "delegates", "representatives", "contributors",
+#         "staff", "employees", "team", "team members",
+
+#         # Added
+#         "associates", "colleagues", "memberships", "stakeholders",
+#         "registrants", "guests", "volunteers", "occupants",
+#         "affiliates", "constituents",
+#     ],
+
+#     # ── Meetings ──────────────────────────────────────────────────────────────
+#     "meeting": [
+#         "session", "event", "conference", "call", "assembly", "gathering",
+#         "huddle", "sync", "standup", "stand-up", "roundtable", "seminar",
+#         "webinar", "workshop",
+
+#         # Added
+#         "discussion", "consultation", "briefing", "forum", "summit",
+#         "convention", "town hall", "check-in", "review", "strategy session",
+#     ],
+
+#     "meetings": [
+#         "sessions", "events", "conferences", "calls", "assemblies",
+#         "gatherings", "huddles", "syncs", "standups", "seminars",
+#         "webinars", "workshops",
+
+#         # Added
+#         "discussions", "consultations", "briefings", "forums", "summits",
+#         "conventions", "town halls", "check-ins", "reviews",
+#         "strategy sessions",
+#     ],
+
+#     # ── Committees ────────────────────────────────────────────────────────────
+#     "committee": [
+#         "board", "panel", "group", "team", "council", "task force",
+#         "working group", "sub-committee", "subcommittee", "department",
+
+#         # Added
+#         "commission", "bureau", "unit", "division", "cell",
+#         "advisory board", "steering committee", "governing body",
+#         "crew", "collective",
+#     ],
+
+#     "committees": [
+#         "boards", "panels", "groups", "teams", "councils", "task forces",
+#         "working groups", "sub-committees", "subcommittees", "departments",
+
+#         # Added
+#         "commissions", "bureaus", "units", "divisions", "cells",
+#         "advisory boards", "steering committees", "governing bodies",
+#         "crews", "collectives",
+#     ],
+
+#     # ── Agendas ───────────────────────────────────────────────────────────────
+#     "agendas": [
+#         "agenda items", "topics", "discussion points", "items",
+#         "talking points", "points", "action items",
+
+#         # Added
+#         "subjects", "matters", "issues", "bullet points", "plans",
+#         "schedules", "itineraries", "objectives", "discussion topics",
+#         "focus areas",
+#     ],
+
+#     "agenda": [
+#         "agenda item", "topic", "discussion point", "item",
+#         "talking point", "point",
+
+#         # Added
+#         "subject", "matter", "issue", "bullet point", "plan",
+#         "schedule", "itinerary", "objective", "discussion topic",
+#         "focus area",
+#     ],
+
+#     # ── Minutes of Meeting ────────────────────────────────────────────────────
+#     "minutes": [
+#          "minutes of meeting", "meeting notes", "notes",
+#         "meeting records", "records", "proceedings", "summary",
+#         "meeting summary",
+
+#         # Added
+#         "transcript", "log", "documentation", "report", "recap",
+#         "brief", "memorandum", "digest", "chronicle", "account",
+#     ],
+
+#     # ── Documents / attachments ───────────────────────────────────────────────
+#     "shared documents": [
+#         "files", "shared files", "documents", "docs", "attachments",
+#         "resources", "materials", "references",
+
+#         # Added
+#         "artifacts", "records", "papers", "worksheets", "spreadsheets",
+#         "presentations", "reports", "manuals", "handouts", "content",
+#     ],
+
+#     "attachment": [
+#         "file", "document", "doc", "upload", "annexed file",
+#         "annexed document", "appended file",
+
+#         # Added
+#         "enclosure", "supplement", "appendix", "insert", "annex",
+#         "addendum", "supporting file", "supporting document",
+#         "linked file", "enclosed file",
+#     ],
+
+#     "attachments": [
+#         "files", "documents", "docs", "uploads", "annexed files",
+#         "appended files",
+
+#         # Added
+#         "enclosures", "supplements", "appendices", "inserts", "annexes",
+#         "addenda", "supporting files", "supporting documents",
+#         "linked files", "enclosed files",
+#     ],
+
+#     # ── Temporal / ordering ───────────────────────────────────────────────────
+#     "upcoming": [
+#         "future", "next", "scheduled", "planned", "incoming",
+#         "forthcoming", "coming",
+
+#         # Added
+#         "anticipated", "expected", "pending", "approaching", "on the horizon",
+#         "prospective", "queued", "arranged", "booked", "slated",
+#     ],
+
+#     "recent": [
+#         "latest", "last", "newest", "most recent", "previous",
+#         "just held", "past",
+
+#         # Added
+#         "current", "fresh", "new", "recently completed", "just concluded",
+#         "latest available", "updated", "near-term past",
+#         "recently conducted", "newly added",
+#     ],
+
+#     # ── Counts / aggregations ─────────────────────────────────────────────────
+#     "how many": [
+#         "count of", "number of", "total number of", "total count of",
+#         "quantity of", "# of",
+
+#         # Added
+#         "how much", "amount of", "aggregate of", "sum of",
+#         "overall count of", "tally of", "volume of",
+#         "frequency of", "enumeration of", "headcount of",
+#     ],
+
+#     "list": [
+#         "show", "display", "give me", "fetch", "get", "find",
+#         "retrieve", "what are", "tell me", "can you show", "can you list",
+
+#         # Added
+#         "enumerate", "present", "provide", "output", "return",
+#         "reveal", "lookup", "view", "bring up", "supply",
+#     ],
+# }
+
     "members": [
         "participants", "attendees", "people", "persons", "individuals",
         "users", "invitees", "delegates", "representatives", "contributors",
         "staff", "employees", "team", "team members",
-
-        # Added
         "associates", "colleagues", "memberships", "stakeholders",
         "registrants", "guests", "volunteers", "occupants",
-        "affiliates", "constituents",
+        "affiliates", "constituents", "personnel", "workforce"
     ],
 
     # ── Meetings ──────────────────────────────────────────────────────────────
@@ -36,144 +191,119 @@ SYNONYM_MAP: dict[str, list[str]] = {
         "session", "event", "conference", "call", "assembly", "gathering",
         "huddle", "sync", "standup", "stand-up", "roundtable", "seminar",
         "webinar", "workshop",
-
-        # Added
         "discussion", "consultation", "briefing", "forum", "summit",
         "convention", "town hall", "check-in", "review", "strategy session",
+        "meeting session", "scheduled meeting"
     ],
 
     "meetings": [
         "sessions", "events", "conferences", "calls", "assemblies",
         "gatherings", "huddles", "syncs", "standups", "seminars",
         "webinars", "workshops",
-
-        # Added
         "discussions", "consultations", "briefings", "forums", "summits",
         "conventions", "town halls", "check-ins", "reviews",
-        "strategy sessions",
+        "strategy sessions"
     ],
 
     # ── Committees ────────────────────────────────────────────────────────────
     "committee": [
         "board", "panel", "group", "team", "council", "task force",
         "working group", "sub-committee", "subcommittee", "department",
-
-        # Added
         "commission", "bureau", "unit", "division", "cell",
         "advisory board", "steering committee", "governing body",
-        "crew", "collective",
+        "crew", "collective", "organization group", "internal committee"
     ],
 
     "committees": [
         "boards", "panels", "groups", "teams", "councils", "task forces",
         "working groups", "sub-committees", "subcommittees", "departments",
-
-        # Added
         "commissions", "bureaus", "units", "divisions", "cells",
         "advisory boards", "steering committees", "governing bodies",
-        "crews", "collectives",
+        "crews", "collectives"
     ],
 
     # ── Agendas ───────────────────────────────────────────────────────────────
     "agendas": [
         "agenda items", "topics", "discussion points", "items",
         "talking points", "points", "action items",
-
-        # Added
         "subjects", "matters", "issues", "bullet points", "plans",
         "schedules", "itineraries", "objectives", "discussion topics",
-        "focus areas",
+        "focus areas", "meeting points"
     ],
 
     "agenda": [
         "agenda item", "topic", "discussion point", "item",
         "talking point", "point",
-
-        # Added
         "subject", "matter", "issue", "bullet point", "plan",
         "schedule", "itinerary", "objective", "discussion topic",
-        "focus area",
+        "focus area"
     ],
 
     # ── Minutes of Meeting ────────────────────────────────────────────────────
     "minutes": [
-         "minutes of meeting", "meeting notes", "notes",
+        "minutes of meeting", "meeting notes", "notes",
         "meeting records", "records", "proceedings", "summary",
         "meeting summary",
-
-        # Added
         "transcript", "log", "documentation", "report", "recap",
         "brief", "memorandum", "digest", "chronicle", "account",
+        "decisions", "outcomes"
     ],
 
     # ── Documents / attachments ───────────────────────────────────────────────
     "shared documents": [
         "files", "shared files", "documents", "docs", "attachments",
         "resources", "materials", "references",
-
-        # Added
         "artifacts", "records", "papers", "worksheets", "spreadsheets",
         "presentations", "reports", "manuals", "handouts", "content",
+        "shared docs", "public documents", "common documents"
     ],
 
     "attachment": [
         "file", "document", "doc", "upload", "annexed file",
         "annexed document", "appended file",
-
-        # Added
         "enclosure", "supplement", "appendix", "insert", "annex",
         "addendum", "supporting file", "supporting document",
-        "linked file", "enclosed file",
+        "linked file", "enclosed file", "uploaded file"
     ],
 
     "attachments": [
         "files", "documents", "docs", "uploads", "annexed files",
         "appended files",
-
-        # Added
         "enclosures", "supplements", "appendices", "inserts", "annexes",
         "addenda", "supporting files", "supporting documents",
-        "linked files", "enclosed files",
+        "linked files", "enclosed files", "uploaded files"
     ],
 
     # ── Temporal / ordering ───────────────────────────────────────────────────
     "upcoming": [
         "future", "next", "scheduled", "planned", "incoming",
         "forthcoming", "coming",
-
-        # Added
         "anticipated", "expected", "pending", "approaching", "on the horizon",
-        "prospective", "queued", "arranged", "booked", "slated",
+        "prospective", "queued", "arranged", "booked", "slated"
     ],
 
     "recent": [
         "latest", "last", "newest", "most recent", "previous",
         "just held", "past",
-
-        # Added
         "current", "fresh", "new", "recently completed", "just concluded",
         "latest available", "updated", "near-term past",
-        "recently conducted", "newly added",
+        "recently conducted", "newly added"
     ],
 
     # ── Counts / aggregations ─────────────────────────────────────────────────
     "how many": [
         "count of", "number of", "total number of", "total count of",
         "quantity of", "# of",
-
-        # Added
         "how much", "amount of", "aggregate of", "sum of",
         "overall count of", "tally of", "volume of",
-        "frequency of", "enumeration of", "headcount of",
+        "frequency of", "enumeration of", "headcount of"
     ],
 
     "list": [
         "show", "display", "give me", "fetch", "get", "find",
         "retrieve", "what are", "tell me", "can you show", "can you list",
-
-        # Added
         "enumerate", "present", "provide", "output", "return",
-        "reveal", "lookup", "view", "bring up", "supply",
+        "reveal", "lookup", "view", "bring up", "supply"
     ],
 }
 
@@ -204,7 +334,7 @@ def normalize_question(question: str) -> str:
         # Word-boundary aware, case-insensitive replacement
         pattern = r'(?<!\w)' + re.escape(syn) + r'(?!\w)'
         normalized = re.sub(pattern, canonical, normalized, flags=re.IGNORECASE)
-
+   
     return normalized
 
 
