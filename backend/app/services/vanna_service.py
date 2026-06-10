@@ -66,12 +66,13 @@ class OpenAIVanna(ChromaDB_VectorStore, OpenAI_Chat):
 
                 "3. Never use SELECT *. Always name columns explicitly.\n\n"
 
-                "4. For entity names, titles, descriptions, remarks, addresses, and other "
+                "4. For entity names, titles, descriptions, remarks, addresses, dates, time and other "
                 "free-text/searchable columns, use the SQL LIKE operator with wildcards.\n"
                 "Examples:\n"
                 "   MemberName LIKE '%John%'\n"
                 "   CommitteeName LIKE '%Finance%'\n"
                 "   Remarks LIKE '%meeting%'\n\n"
+                "   Time LIKE %6:30 PM%\n\n"
 
                 "5. For categorical or enumerated columns (e.g. Gender, Status, Type, "
                 "ActiveFlag, MaritalStatus, Yes/No fields, approval states, codes, or "
@@ -230,6 +231,8 @@ def _validate_sql_against_schema(sql: str, schema: dict[str, list[str]]) -> Opti
 
     # ── Strip string literals so their words aren't tokenized ─────────────────
     sql_no_strings = re.sub(r"'[^']*'", "", sql)
+    sql_no_strings = re.sub(r"--[^\n]*", "", sql_no_strings)
+    sql_no_strings = re.sub(r"/\*.*?\*/", "", sql_no_strings, flags=re.DOTALL)
 
     # ── Column check ─────────────────────────────────────────────────────────
     all_known_cols_upper = {
@@ -389,7 +392,29 @@ def run_query(instance_key: str, question: str) -> dict:
 
         # ── Execute ───────────────────────────────────────────────────────────
         df = vn.run_sql(sql)
-        results = df.to_dict(orient="records") if df is not None else []
+        if df is not None:
+            # Convert nullable float-integers back to int where possible,
+            # and replace NaN/NaT with None for JSON safety
+            import math
+            def sanitize(val):
+                if val is None:
+                    return None
+                try:
+                    import pandas as pd
+                    if pd.isna(val):
+                        return None
+                except (TypeError, ValueError):
+                    pass
+                if isinstance(val, float) and val.is_integer():
+                    return int(val)
+                return val
+
+            results = [
+                {k: sanitize(v) for k, v in record.items()}
+                for record in df.to_dict(orient="records")
+            ]
+        else:
+            results = []
         return {
             "sql": sql,
             "results": results,

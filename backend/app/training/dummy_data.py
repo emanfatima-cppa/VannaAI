@@ -34,25 +34,7 @@ DUMMY_TRAINING: dict[str, dict] = {
             • MtMeetingHeader_OtherAddress – physical address / venue
             • MtMeetingHeader_Isdeleted   – soft-delete flag (always filter = 0)
             • LuMeetingSphereLookups_StatusCode – meeting status (see Status section)
-            • MtCommitteeHeader_Id        – links the meeting to its committee
-            To show upcoming / future / next / aanay wali meetings filter MtMeetingHeader_MeetingDate >= CAST(GETDATE() AS DATE).
-            To show past / previous / pehle wali / already happened meetings filter MtMeetingHeader_MeetingDate < CAST(GETDATE() AS DATE).
-            For today's (aaj / aj) meetings filter CAST(MtMeetingHeader_MeetingDate AS DATE) = CAST(GETDATE() AS DATE).
-            For this week (iss haftay / is week) use DATEPART(WEEK,...) = DATEPART(WEEK,GETDATE()).
-            For this month (iss mahine / is month) use MONTH(...) = MONTH(GETDATE()).
-            To search meeting by name/title use LIKE: WHERE MtMeetingHeader_Title LIKE '%keyword%'""",
-
-            # ── MEETING STATUS ─────────────────────────────────────
-            """Meeting status is stored in the column LuMeetingSphereLookups_StatusCode
-            inside MtMeetingHeader.  Status synonyms: status, state, halat, situation.
-            Valid status values and their meaning:
-            • Draft      – draft, drafted, draft version, not published yet, incomplete
-            • Published  – published, released, live, announced, finalised
-            • Cancelled  – cancelled, canceled, cancel, stopped, nahin hogi
-            • Completed  – completed, done, finished, ended, ho chuki, khatam
-            • InProgress – in progress, ongoing, running, chal rahi, active
-            When someone asks about the status of a meeting always return
-            LuMeetingSphereLookups_StatusCode along with meeting title and ID.""",
+            • MtCommitteeHeader_Id        – links the meeting to its committee""",
 
              # ── AGENDAS ────────────────────────────────────────────
             """Meeting agendas are stored in MtMeetingAgenda.  Every column is prefixed
@@ -63,10 +45,7 @@ DUMMY_TRAINING: dict[str, dict] = {
             • MtMeetingHeader_Id        – foreign key linking to MtMeetingHeader
             • MtMeetingAgenda_Title     – title / name of the agenda item
             • MtMeetingAgenda_CreatedOn – creation timestamp
-            • MtMeetingAgenda_Isdeleted – soft-delete flag (always filter = 0)
-            To count agendas created until today:
-            SELECT COUNT(*) AS TotalAgendas FROM MtMeetingAgenda
-            WHERE MtMeetingAgenda_Isdeleted = 0 AND MtMeetingAgenda_CreatedOn <= GETDATE()""",
+            • MtMeetingAgenda_Isdeleted – soft-delete flag (always filter = 0)""",
 
              # ── USERS / EMPLOYEES ──────────────────────────────────
             """Employees, users, staff, workers, people, and team members are all stored
@@ -130,17 +109,11 @@ DUMMY_TRAINING: dict[str, dict] = {
             • MtCommitteeUsers_Id        – primary key
             • MtCommitteeHeader_Id       – FK to committee
             • RuUsers_Id                 – FK to RuUsers (the person)
-            • MtCommitteeUsers_RoleCode  – role of the person: 'Secretary', 'Chairman', 'Member', etc.
+            • MtCommitteeUsers_RoleCode  – role of the person: 'Secretary', 'Convener', 'Member', 'participant'.
             • MtCommitteeUsers_IsDeleted – soft-delete (filter = 0)
 
             To find members/users of a committee join MtCommitteeUsers with RuUsers.
             Do NOT use imaginary tables like MtMeetingUsers or MtCommitteeMembers.
-
-            To find a specific role (e.g. secretary, chairman) in a meeting or committee:
-            JOIN MtMeetingHeader m ON m.MtCommitteeHeader_Id = c.MtCommitteeHeader_Id
-            JOIN MtCommitteeUsers cu ON cu.MtCommitteeHeader_Id = c.MtCommitteeHeader_Id
-            JOIN RuUsers u ON u.RuUsers_Id = cu.RuUsers_Id
-            WHERE cu.MtCommitteeUsers_RoleCode LIKE '%Secretary%'
 
             Meeting profiles are linked to committees through RuMeetingProfile via
             RuMeetingProfile_Id. Meeting profile names are in RuMeetingProfile_Name.""",
@@ -421,10 +394,6 @@ DUMMY_TRAINING: dict[str, dict] = {
         ],
         "qa_pairs": [
             {
-                "question": "name the male person from this meeting",
-                "sql": "gjh"
-            },
-            {
                 "question": "is there any guest whose name is Eman",
                 "sql": """
                    SELECT DISTINCT
@@ -449,6 +418,85 @@ DUMMY_TRAINING: dict[str, dict] = {
                     FROM RuMeetingProfile
                     WHERE RuMeetingProfile_EffectiveTo <= '2026-06-06'
                     AND RuMeetingProfile_IsDeleted = 0
+                """
+            },
+            {
+                "question": "list attachments of meeting with title like '4J Meeting'",
+                "sql": """
+                    SELECT m.MtMeetingHeader_Id,
+                    m.MtMeetingHeader_Title,
+                    d.MtAttachment_SourceId,
+                    d.MtAttachment_FileName,
+                    d.MtAttachment_CreatedOn
+                FROM MtMeetingHeader AS m
+                INNER JOIN [MtAttachment] AS d
+                    ON m.MtMeetingHeader_Id = d.MtAttachment_SourceId
+                WHERE m.MtMeetingHeader_Isdeleted = 0
+                AND d.MtAttachment_IsDeleted = 0
+                AND m.MtMeetingHeader_Title LIKE '%4J Meeting%'
+                """
+            },
+            {
+                "question": "name all the meetings that are scheduled in location CPPAOFFICEISLAMABAD",
+                "sql": """    
+                    SELECT 
+                        MtMeetingHeader_Id,
+                        MtMeetingHeader_Title,
+                        MtMeetingHeader_MeetingDate,
+                        MtMeetingHeader_MeetingStartTime,
+                        MtMeetingHeader_Organizer,
+                        MtMeetingHeader_Description,
+                        MtMeetingHeader_Meeting_Link,
+                        LuMeetingSphereLookups_StatusCode,
+                        MtMeetingHeader_OtherAddress
+                    FROM MtMeetingHeader
+                    WHERE MtMeetingHeader_Isdeleted = 0
+                    AND LuMeetingSphereLookups_LocationCode = 'CPPAOFFICEISLAMABAD'
+                """
+            },
+            {
+                "question": "list attachments of 4J meeting",
+                "sql": """
+                    SELECT m.MtMeetingHeader_Id,
+                    m.MtMeetingHeader_Title,
+                    d.MtAttachment_SourceId,
+                    d.MtAttachment_FileName,
+                    d.MtAttachment_CreatedOn
+                FROM MtMeetingHeader AS m
+                INNER JOIN [MtAttachment] AS d
+                    ON m.MtMeetingHeader_Id = d.MtAttachment_SourceId
+                WHERE m.MtMeetingHeader_Isdeleted = 0
+                AND d.MtAttachment_IsDeleted = 0
+                AND m.MtMeetingHeader_Title LIKE '%4J Meeting%'
+                """
+            },
+            {
+                "question": "how many shared documents are available with committee Engro Power",
+                "sql": """
+                    SELECT 
+                        c.MtCommitteeHeader_Id,
+                        c.MtCommitteeHeader_Name,
+                        sd.MtSharedDocumentsHeader_Id,
+                        sd.MtSharedDocumentsHeader_Title,
+                        att.MtAttachment_Id,
+                        att.MtAttachment_FileName,
+                        att.MtAttachment_FileExtension,
+                        att.MtAttachment_FileSizeBytes,
+                        att.MtAttachment_EcmFileId,
+                        att.MtAttachment_CreatedOn
+                    FROM MtCommitteeHeader AS c
+                    INNER JOIN MtDocumentCommittee AS dc
+                        ON dc.MtCommitteeHeader_Id = c.MtCommitteeHeader_Id
+                    INNER JOIN MtSharedDocumentsHeader AS sd
+                        ON sd.MtSharedDocumentsHeader_Id = dc.MtSharedDocumentsHeader_Id
+                    LEFT JOIN MtAttachment AS att
+                        ON att.MtAttachment_Source = 'SharedDocument'
+                    AND att.MtAttachment_SourceId = sd.MtSharedDocumentsHeader_Id
+                    WHERE c.MtCommitteeHeader_Isdeleted = 0
+                    AND ISNULL(dc.MtDocumentCommittee_IsDeleted, 0) = 0
+                    AND sd.MtSharedDocumentsHeader_IsDeleted = 0
+                    AND att.MtAttachment_IsDeleted = 0
+                    AND c.MtCommitteeHeader_Name LIKE '%Engro Power%';
                 """
             },
             {

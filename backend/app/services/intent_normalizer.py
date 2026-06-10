@@ -19,162 +19,162 @@ from typing import Optional
 
 SYNONYM_MAP: dict[str, list[str]] = {
 
-    # ── People / membership ───────────────────────────────────────────────────
-    "members": [
-        "participants", "attendees", "people", "persons", "individuals",
-        "users", "invitees", "delegates", "representatives", "contributors",
-        "staff", "employees", "team", "team members",
+    # # ── People / membership ───────────────────────────────────────────────────
+    # "members": [
+    #     "participants", "attendees", "people", "persons", "individuals",
+    #     "users", "invitees", "delegates", "representatives", "contributors",
+    #     "staff", "employees", "team", "team members",
 
-        # Added
-        "associates", "colleagues", "memberships", "stakeholders",
-        "registrants", "guests", "volunteers", "occupants",
-        "affiliates", "constituents",
-    ],
+    #     # Added
+    #     "associates", "colleagues", "memberships", "stakeholders",
+    #     "registrants", "guests", "volunteers", "occupants",
+    #     "affiliates", "constituents",
+    # ],
 
-    # ── Meetings ──────────────────────────────────────────────────────────────
-    "meeting": [
-        "session", "event", "conference", "call", "assembly", "gathering",
-        "huddle", "sync", "standup", "stand-up", "roundtable", "seminar",
-        "webinar", "workshop",
+    # # ── Meetings ──────────────────────────────────────────────────────────────
+    # "meeting": [
+    #     "session", "event", "conference", "call", "assembly", "gathering",
+    #     "huddle", "sync", "standup", "stand-up", "roundtable", "seminar",
+    #     "webinar", "workshop",
 
-        # Added
-        "discussion", "consultation", "briefing", "forum", "summit",
-        "convention", "town hall", "check-in", "review", "strategy session",
-    ],
+    #     # Added
+    #     "discussion", "consultation", "briefing", "forum", "summit",
+    #     "convention", "town hall", "check-in", "review", "strategy session",
+    # ],
 
-    "meetings": [
-        "sessions", "events", "conferences", "calls", "assemblies",
-        "gatherings", "huddles", "syncs", "standups", "seminars",
-        "webinars", "workshops",
+    # "meetings": [
+    #     "sessions", "events", "conferences", "calls", "assemblies",
+    #     "gatherings", "huddles", "syncs", "standups", "seminars",
+    #     "webinars", "workshops",
 
-        # Added
-        "discussions", "consultations", "briefings", "forums", "summits",
-        "conventions", "town halls", "check-ins", "reviews",
-        "strategy sessions",
-    ],
+    #     # Added
+    #     "discussions", "consultations", "briefings", "forums", "summits",
+    #     "conventions", "town halls", "check-ins", "reviews",
+    #     "strategy sessions",
+    # ],
 
-    # ── Committees ────────────────────────────────────────────────────────────
-    "committee": [
-        "board", "panel", "group", "team", "council", "task force",
-        "working group", "sub-committee", "subcommittee", "department",
+    # # # ── Committees ────────────────────────────────────────────────────────────
+    # # "committee": [
+    # #     "board", "panel", "group", "team", "council", "task force",
+    # #     "working group", "sub-committee", "subcommittee", "department",
 
-        # Added
-        "commission", "bureau", "unit", "division", "cell",
-        "advisory board", "steering committee", "governing body",
-        "crew", "collective",
-    ],
+    # #     # Added
+    # #     "commission", "bureau", "unit", "division", "cell",
+    # #     "advisory board", "steering committee", "governing body",
+    # #     "crew", "collective",
+    # # ],
 
-    "committees": [
-        "boards", "panels", "groups", "teams", "councils", "task forces",
-        "working groups", "sub-committees", "subcommittees", "departments",
+    # # "committees": [
+    # #     "boards", "panels", "groups", "teams", "councils", "task forces",
+    # #     "working groups", "sub-committees", "subcommittees", "departments",
 
-        # Added
-        "commissions", "bureaus", "units", "divisions", "cells",
-        "advisory boards", "steering committees", "governing bodies",
-        "crews", "collectives",
-    ],
+    # #     # Added
+    # #     "commissions", "bureaus", "units", "divisions", "cells",
+    # #     "advisory boards", "steering committees", "governing bodies",
+    # #     "crews", "collectives",
+    # # ],
 
-    # ── Agendas ───────────────────────────────────────────────────────────────
-    "agendas": [
-        "agenda items", "topics", "discussion points", "items",
-        "talking points", "points", "action items",
+    # # ── Agendas ───────────────────────────────────────────────────────────────
+    # "agendas": [
+    #     "agenda items", "topics", "discussion points", "items",
+    #     "talking points", "points", "action items",
 
-        # Added
-        "subjects", "matters", "issues", "bullet points", "plans",
-        "schedules", "itineraries", "objectives", "discussion topics",
-        "focus areas",
-    ],
+    #     # Added
+    #     "subjects", "matters", "issues", "bullet points", "plans",
+    #     "schedules", "itineraries", "objectives", "discussion topics",
+    #     "focus areas",
+    # ],
 
-    "agenda": [
-        "agenda item", "topic", "discussion point", "item",
-        "talking point", "point",
+    # "agenda": [
+    #     "agenda item", "topic", "discussion point", "item",
+    #     "talking point", "point",
 
-        # Added
-        "subject", "matter", "issue", "bullet point", "plan",
-        "schedule", "itinerary", "objective", "discussion topic",
-        "focus area",
-    ],
+    #     # Added
+    #     "subject", "matter", "issue", "bullet point", "plan",
+    #     "schedule", "itinerary", "objective", "discussion topic",
+    #     "focus area",
+    # ],
 
-    # ── Minutes of Meeting ────────────────────────────────────────────────────
-    "minutes": [
-         "minutes of meeting", "meeting notes", "notes",
-        "meeting records", "records", "proceedings", "summary",
-        "meeting summary",
+    # # ── Minutes of Meeting ────────────────────────────────────────────────────
+    # "minutes": [
+    #      "minutes of meeting", "meeting notes", "notes",
+    #     "meeting records", "records", "proceedings", "summary",
+    #     "meeting summary",
 
-        # Added
-        "transcript", "log", "documentation", "report", "recap",
-        "brief", "memorandum", "digest", "chronicle", "account",
-    ],
+    #     # Added
+    #     "transcript", "log", "documentation", "report", "recap",
+    #     "brief", "memorandum", "digest", "chronicle", "account",
+    # ],
 
-    # ── Documents / attachments ───────────────────────────────────────────────
-    "shared documents": [
-        "files", "shared files", "documents", "docs", "attachments",
-        "resources", "materials", "references",
+    # # ── Documents / attachments ───────────────────────────────────────────────
+    # "shared documents": [
+    #     "files", "shared files", "documents", "docs", 
+    #     "resources", "materials", "references",
 
-        # Added
-        "artifacts", "records", "papers", "worksheets", "spreadsheets",
-        "presentations", "reports", "manuals", "handouts", "content",
-    ],
+    #     # Added
+    #     "artifacts", "records", "papers", "worksheets", "spreadsheets",
+    #     "presentations", "reports", "manuals", "handouts", "content",
+    # ],
 
-    "attachment": [
-        "file", "document", "doc", "upload", "annexed file",
-        "annexed document", "appended file",
+    # "attachment": [
+    #     "file", "document", "doc", "upload", "annexed file",
+    #     "annexed document", "appended file",
 
-        # Added
-        "enclosure", "supplement", "appendix", "insert", "annex",
-        "addendum", "supporting file", "supporting document",
-        "linked file", "enclosed file",
-    ],
+    #     # Added
+    #     "enclosure", "supplement", "appendix", "insert", "annex",
+    #     "addendum", "supporting file", "supporting document",
+    #     "linked file", "enclosed file",
+    # ],
 
-    "attachments": [
-        "files", "documents", "docs", "uploads", "annexed files",
-        "appended files",
+    # "attachments": [
+    #     "files", "documents", "docs", "uploads", "annexed files",
+    #     "appended files",
 
-        # Added
-        "enclosures", "supplements", "appendices", "inserts", "annexes",
-        "addenda", "supporting files", "supporting documents",
-        "linked files", "enclosed files",
-    ],
+    #     # Added
+    #     "enclosures", "supplements", "appendices", "inserts", "annexes",
+    #     "addenda", "supporting files", "supporting documents",
+    #     "linked files", "enclosed files",
+    # ],
 
-    # ── Temporal / ordering ───────────────────────────────────────────────────
-    "upcoming": [
-        "future", "next", "scheduled", "planned", "incoming",
-        "forthcoming", "coming",
+    # # # ── Temporal / ordering ───────────────────────────────────────────────────
+    # # "upcoming": [
+    # #     "future", "next", "scheduled", "planned", "incoming",
+    # #     "forthcoming", "coming",
 
-        # Added
-        "anticipated", "expected", "pending", "approaching", "on the horizon",
-        "prospective", "queued", "arranged", "booked", "slated",
-    ],
+    # #     # Added
+    # #     "anticipated", "expected", "pending", "approaching", "on the horizon",
+    # #     "prospective", "queued", "arranged", "booked", "slated",
+    # # ],
 
-    "recent": [
-        "latest", "last", "newest", "most recent", "previous",
-        "just held", "past",
+    # # "recent": [
+    # #     "latest", "last", "newest", "most recent", "previous",
+    # #     "just held", "past",
 
-        # Added
-        "current", "fresh", "new", "recently completed", "just concluded",
-        "latest available", "updated", "near-term past",
-        "recently conducted", "newly added",
-    ],
+    # #     # Added
+    # #     "current", "fresh", "new", "recently completed", "just concluded",
+    # #     "latest available", "updated", "near-term past",
+    # #     "recently conducted", "newly added",
+    # # ],
 
-    # ── Counts / aggregations ─────────────────────────────────────────────────
-    "how many": [
-        "count of", "number of", "total number of", "total count of",
-        "quantity of", "# of",
+    # # ── Counts / aggregations ─────────────────────────────────────────────────
+    # "how many": [
+    #     "count of", "number of", "total number of", "total count of",
+    #     "quantity of", "# of",
 
-        # Added
-        "how much", "amount of", "aggregate of", "sum of",
-        "overall count of", "tally of", "volume of",
-        "frequency of", "enumeration of", "headcount of",
-    ],
+    #     # Added
+    #     "how much", "amount of", "aggregate of", "sum of",
+    #     "overall count of", "tally of", "volume of",
+    #     "frequency of", "enumeration of", "headcount of",
+    # ],
 
-    "list": [
-        "show", "display", "give me", "fetch", "get", "find",
-        "retrieve", "what are", "tell me", "can you show", "can you list",
+    # "list": [
+    #     "show", "display", "give me", "fetch", "get", "find",
+    #     "retrieve", "what are", "tell me", "can you show", "can you list",
 
-        # Added
-        "enumerate", "present", "provide", "output", "return",
-        "reveal", "lookup", "view", "bring up", "supply",
-    ],
+    #     # Added
+    #     "enumerate", "present", "provide", "output", "return",
+    #     "reveal", "lookup", "view", "bring up", "supply",
+    # ],
 }
 
 # Pre-build a flat lookup: synonym (lower) → canonical term

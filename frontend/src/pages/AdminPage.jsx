@@ -12,12 +12,15 @@ export default function AdminPage() {
   const [stats, setStats] = useState(null)
   const [loadingTrain, setLoadingTrain] = useState(false)
   const [loadingData, setLoadingData] = useState(false)
+  const [selectedIds, setSelectedIds] = useState(new Set())
+  const [deletingBulk, setDeletingBulk] = useState(false)
 
   const adminInstances = instances.filter(() => user?.roles?.some(r => r.endsWith('_admin')))
 
   const loadData = async (key) => {
     if (!key) return
     setLoadingData(true)
+    setSelectedIds(new Set())
     try {
       const [td, st] = await Promise.all([
         fetchTrainingData(key),
@@ -55,6 +58,39 @@ export default function AdminPage() {
       loadData(selectedInst)
     } catch {
       toast.error('Delete failed')
+    }
+  }
+
+  const handleBulkDelete = async () => {
+    if (!selectedInst || selectedIds.size === 0) return
+    setDeletingBulk(true)
+    try {
+      await Promise.all([...selectedIds].map(id => deleteTrainingRecord(selectedInst, id)))
+      toast.success(`${selectedIds.size} record${selectedIds.size > 1 ? 's' : ''} removed`)
+      loadData(selectedInst)
+    } catch {
+      toast.error('Bulk delete failed')
+    } finally {
+      setDeletingBulk(false)
+    }
+  }
+
+  const toggleRow = (id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  const allChecked = trainingData.length > 0 && selectedIds.size === trainingData.length
+  const someChecked = selectedIds.size > 0 && !allChecked
+
+  const toggleAll = () => {
+    if (allChecked || someChecked) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(trainingData.map(r => r.id)))
     }
   }
 
@@ -131,6 +167,21 @@ export default function AdminPage() {
                 </button>
               </div>
 
+              {/* Bulk action bar */}
+              {selectedIds.size > 0 && (
+                <div style={styles.bulkBar}>
+                  <span style={styles.bulkCount}>{selectedIds.size} selected</span>
+                  <button
+                    style={{ ...styles.btn, ...styles.btnDanger, opacity: deletingBulk ? 0.6 : 1 }}
+                    onClick={handleBulkDelete}
+                    disabled={deletingBulk}
+                  >
+                    <Trash2 size={13} />
+                    {deletingBulk ? 'Deleting…' : `Delete ${selectedIds.size} record${selectedIds.size > 1 ? 's' : ''}`}
+                  </button>
+                </div>
+              )}
+
               {loadingData ? (
                 <p style={styles.hint}>Loading…</p>
               ) : trainingData.length === 0 ? (
@@ -140,31 +191,55 @@ export default function AdminPage() {
                   <table style={styles.table}>
                     <thead>
                       <tr>
+                        <th style={{ ...styles.th, width: 36 }}>
+                          <input
+                            type="checkbox"
+                            checked={allChecked}
+                            ref={el => { if (el) el.indeterminate = someChecked }}
+                            onChange={toggleAll}
+                            style={styles.checkbox}
+                          />
+                        </th>
                         {['Type', 'Content', ''].map((h) => (
                           <th key={h} style={styles.th}>{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {trainingData.map((row) => (
-                        <tr key={row.id}>
-                          <td style={styles.td}>
-                            <span style={{ ...styles.typeTag, ...(typeStyle[row.training_data_type] || {}) }}>
-                              {row.training_data_type}
-                            </span>
-                          </td>
-                          <td style={{ ...styles.td, maxWidth: 400 }}>
-                            <div style={styles.content}>
-                              {row.question || row.content || row.ddl || '—'}
-                            </div>
-                          </td>
-                          <td style={styles.td}>
-                            <button style={styles.deleteBtn} onClick={() => handleDelete(row.id)}>
-                              <Trash2 size={12} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                      {trainingData.map((row) => {
+                        const isSelected = selectedIds.has(row.id)
+                        return (
+                          <tr
+                            key={row.id}
+                            style={isSelected ? styles.trSelected : undefined}
+                            onClick={() => toggleRow(row.id)}
+                          >
+                            <td style={{ ...styles.td, width: 36 }} onClick={e => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleRow(row.id)}
+                                style={styles.checkbox}
+                              />
+                            </td>
+                            <td style={styles.td}>
+                              <span style={{ ...styles.typeTag, ...(typeStyle[row.training_data_type] || {}) }}>
+                                {row.training_data_type}
+                              </span>
+                            </td>
+                            <td style={{ ...styles.td, maxWidth: 400 }}>
+                              <div style={styles.content}>
+                                {row.question || row.content || row.ddl || '—'}
+                              </div>
+                            </td>
+                            <td style={styles.td} onClick={e => e.stopPropagation()}>
+                              <button style={styles.deleteBtn} onClick={() => handleDelete(row.id)}>
+                                <Trash2 size={12} />
+                              </button>
+                            </td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -215,15 +290,27 @@ const styles = {
     padding: '9px 16px', borderRadius: 'var(--radius)',
     background: 'var(--bg-3)', border: '1px solid var(--border)',
     color: 'var(--text-primary)', fontSize: 13, fontFamily: 'var(--font-sans)',
-    transition: 'opacity 0.15s',
+    cursor: 'pointer', transition: 'opacity 0.15s',
   },
   btnPrimary: { background: 'var(--accent)', color: '#0a0c10', border: 'none', fontWeight: 600 },
+  btnDanger: {
+    background: 'rgba(var(--error-rgb, 248,81,73),0.12)',
+    border: '1px solid rgba(var(--error-rgb, 248,81,73),0.35)',
+    color: 'var(--error)', fontWeight: 600,
+  },
   hint: { fontSize: 12, color: 'var(--text-muted)' },
   iconBtn: {
     background: 'var(--bg-3)', border: '1px solid var(--border)',
     borderRadius: 'var(--radius)', padding: '6px 10px',
-    color: 'var(--text-secondary)', display: 'flex', alignItems: 'center',
+    color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', cursor: 'pointer',
   },
+  bulkBar: {
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    padding: '10px 14px', marginBottom: 12,
+    background: 'var(--bg-3)', border: '1px solid var(--border)',
+    borderRadius: 'var(--radius)',
+  },
+  bulkCount: { fontSize: 13, color: 'var(--text-secondary)', fontWeight: 500 },
   tableWrap: { overflowX: 'auto', borderRadius: 'var(--radius)', border: '1px solid var(--border)' },
   table: { width: '100%', borderCollapse: 'collapse', fontSize: 12 },
   th: {
@@ -231,7 +318,9 @@ const styles = {
     fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5,
     borderBottom: '1px solid var(--border)', textAlign: 'left',
   },
-  td: { padding: '8px 12px', borderBottom: '1px solid var(--border)', color: 'var(--text-primary)' },
+  td: { padding: '8px 12px', borderBottom: '1px solid var(--border)', color: 'var(--text-primary)', cursor: 'pointer' },
+  trSelected: { background: 'rgba(88, 166, 255, 0.07)' },
+  checkbox: { cursor: 'pointer', accentColor: 'var(--accent)', width: 13, height: 13 },
   typeTag: {
     display: 'inline-block', padding: '2px 8px', borderRadius: 4,
     fontSize: 11, fontWeight: 600, textTransform: 'uppercase',
