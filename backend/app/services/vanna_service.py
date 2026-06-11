@@ -269,7 +269,7 @@ def _validate_sql_against_schema(sql: str, schema: dict[str, list[str]]) -> Opti
         "ABS", "CEILING", "FLOOR", "ROUND", "POWER", "SQRT", "SIGN",
         "NEWID", "SCOPE_IDENTITY",
         # Schema qualifiers
-        "DBO", "SYS", "INFORMATION_SCHEMA",
+        "DBO", "SYS", "INFORMATION_SCHEMA", "ROWS", "FETCH", "NEXT", "ONLY",
     }
 
     col_tokens = re.findall(r'\b([A-Za-z_]\w*)\b', sql_no_strings)
