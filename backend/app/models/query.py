@@ -16,6 +16,7 @@ class QueryResponse(BaseModel):
     results: Optional[list[dict[str, Any]]]
     error: Optional[str]
     session_id: str
+    nl_summary: Optional[str] = None
 
 
 class FeedbackRequest(BaseModel):
