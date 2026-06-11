@@ -27,15 +27,21 @@ async def list_instances(current_user: dict = Depends(get_current_user)):
 async def ask(req: QueryRequest, current_user: dict = Depends(get_current_user)):
     check_instance_access(req.instance_key, current_user)
 
-    # Build context-enriched question
     context_block = context_service.get_context_prompt(
         current_user["username"], req.instance_key, req.session_id
     )
-    enriched_question = f"{context_block}\n\nCurrent question: {req.question}".strip() if context_block else req.question
+    enriched_question = (
+        f"{context_block}\n\nCurrent question: {req.question}".strip()
+        if context_block else req.question
+    )
 
-    result = vanna_service.run_query(req.instance_key, enriched_question)
+    result = vanna_service.run_query(
+        req.instance_key,
+        enriched_question,          # for SQL generation (needs context)
+        summary_question=req.question,  # clean question for NL summary
+    )
 
-    # Summarise answer for context (row count or first value)
+    # Summarise for context memory
     if result["results"]:
         summary = f"{len(result['results'])} row(s) returned"
     elif result["error"]:
@@ -55,6 +61,7 @@ async def ask(req: QueryRequest, current_user: dict = Depends(get_current_user))
         results=result.get("results"),
         error=result.get("error"),
         session_id=req.session_id,
+        nl_summary=result.get("nl_summary"),   # ← new
     )
 
 

@@ -42,6 +42,7 @@ export default function ChatPage() {
         sql: data.sql,
         results: data.results,
         error: data.error,
+        nl_summary: data.nl_summary,
       })
     } catch (err) {
       addAssistantMessage(assistantMsgId, {          // ← use assistantMsgId

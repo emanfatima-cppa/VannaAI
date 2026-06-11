@@ -52,45 +52,53 @@ class OpenAIVanna(ChromaDB_VectorStore, OpenAI_Chat):
         schema_block = kwargs.get("schema_constraint", "")
         if schema_block:
             constraint = (
-                "STRICT RULES — you MUST follow these before writing any SQL:\n"
-                "1. Only use tables and columns listed in the schema below. "
-                "Do NOT invent, guess, or abbreviate any table or column name.\n"
+            "STRICT RULES — you MUST follow these before writing any SQL:\n"
+            "1. Only use tables and columns listed in the schema below. "
+            "Do NOT invent, guess, or abbreviate any table or column name.\n"
 
-                "2. Use NO_MATCH ONLY when the user asks for a concept whose data is stored "
-                "in NO column in the schema (e.g. 'salary' when no salary column exists). "
-                "NEVER return NO_MATCH just because a specific name, value, or keyword "
-                "mentioned by the user (e.g. '13AP Com', 'Finance Board', 'John') does not "
-                "appear in the schema — those are filter VALUES, not column names. "
-                "Filter values are supplied by the user at runtime and are never listed in "
-                "the schema. When the user mentions a name or value, use the appropriate "
-                "filtering strategy based on the column type.\n"
+            "2. Use NO_MATCH ONLY when the user asks for a concept whose data is stored "
+            "in NO column in the schema (e.g. 'salary' when no salary column exists). "
+            "NEVER return NO_MATCH just because a specific name, value, or keyword "
+            "mentioned by the user (e.g. '13AP Com', 'Finance Board', 'John') does not "
+            "appear in the schema — those are filter VALUES, not column names. "
+            "Filter values are supplied by the user at runtime and are never listed in "
+            "the schema. When the user mentions a name or value, use the appropriate "
+            "filtering strategy based on the column type.\n"
 
-                "3. Never use SELECT *. Always name columns explicitly.\n\n"
+            "3. Never use SELECT *. Always name columns explicitly.\n\n"
 
-                "4. For entity names, titles, descriptions, remarks, addresses, dates, time and other "
-                "free-text/searchable columns, use the SQL LIKE operator with wildcards.\n"
-                "Examples:\n"
-                "   MemberName LIKE '%John%'\n"
-                "   CommitteeName LIKE '%Finance%'\n"
-                "   Remarks LIKE '%meeting%'\n\n"
-                "   Time LIKE %6:30 PM%\n\n"
+            "4. For entity names, titles, descriptions, remarks, addresses, dates, time and other "
+            "free-text/searchable columns, use the SQL LIKE operator with wildcards.\n"
+            "Examples:\n"
+            "   MemberName LIKE '%John%'\n"
+            "   CommitteeName LIKE '%Finance%'\n"
+            "   Remarks LIKE '%meeting%'\n"
+            "   Time LIKE '%6:30 PM%'\n\n"
 
-                "5. For categorical or enumerated columns (e.g. Gender, Status, Type, "
-                "ActiveFlag, MaritalStatus, Yes/No fields, approval states, codes, or "
-                "other fixed-value fields), use exact matching (=) instead of LIKE unless "
-                "the user explicitly requests a partial search.\n"
-                "Examples:\n"
-                "   Gender = 'Male'\n"
-                "   Status = 'Active'\n"
-                "   ActiveFlag = 'Y'\n\n"
+            "5. For categorical or enumerated columns (e.g. Gender, Status, Type, "
+            "ActiveFlag, MaritalStatus, Yes/No fields, approval states, codes, or "
+            "other fixed-value fields), use exact matching (=) instead of LIKE unless "
+            "the user explicitly requests a partial search.\n"
+            "Examples:\n"
+            "   Gender = 'Male'\n"
+            "   Status = 'Active'\n"
+            "   ActiveFlag = 'Y'\n\n"
 
-                "IMPORTANT: Do NOT use LIKE for categorical values where one value may be "
-                "a substring of another. For example, use Gender = 'Male' instead of "
-                "Gender LIKE '%Male%' because it could also match 'Female'.\n\n"
+            "IMPORTANT: Do NOT use LIKE for categorical values where one value may be "
+            "a substring of another. For example, use Gender = 'Male' instead of "
+            "Gender LIKE '%Male%' because it could also match 'Female'.\n\n"
 
-                f"AVAILABLE SCHEMA:\n{schema_block}\n"
-                "─────────────────────────────────────────\n"
-            )
+            "6. If the user asks for attachments, attached files, documents, file content, "
+            "downloadable files, ECM files, or any attachment-related information, you MUST "
+            "include BOTH of the following columns in the SELECT list in addition to any "
+            "other requested columns:\n"
+            "   MtAttachment_FileContent\n"
+            "   MtAttachment_EcmFileId\n"
+            "Never omit these columns for attachment-related queries.\n\n"
+
+            f"AVAILABLE SCHEMA:\n{schema_block}\n"
+            "─────────────────────────────────────────\n"
+        )
             # Prepend to the first system message
             if isinstance(prompt, list):
                 for msg in prompt:
@@ -306,10 +314,73 @@ def _is_valid_sql(text: str) -> bool:
         stripped,
     ))
 
+# ─── Natural-language summary ─────────────────────────────────────────────────
+
+def generate_nl_summary(
+    question: str,
+    sql: Optional[str],
+    results: Optional[list[dict]],
+    error: Optional[str],
+    *,
+    api_key: str,
+    model: str = "gpt-4.1-mini",
+    language: str = "English",          # "English", "Urdu", "Hinglish"
+    max_sample_rows: int = 5,
+) -> str:
+    """
+    Ask the LLM to produce a plain-language summary of the query result
+    so non-technical users can understand what was returned.
+
+    The prompt is intentionally compact — we pass only a sample of the rows
+    to stay within token budget and avoid leaking large result sets.
+    """
+    import openai
+
+    # ── Build a compact result snapshot ──────────────────────────────────────
+    if error:
+        result_snapshot = f"Query failed with error: {error}"
+    elif not results:
+        result_snapshot = "The query returned no rows."
+    else:
+        sample = results[:max_sample_rows]
+        total  = len(results)
+        rows_text = "\n".join(str(r) for r in sample)
+        tail = f"\n... ({total - max_sample_rows} more rows)" if total > max_sample_rows else ""
+        result_snapshot = f"Total rows returned: {total}\nSample data:\n{rows_text}{tail}"
+
+    system_prompt = (
+        f"You are a helpful assistant that explains database query results "
+        f"in simple, clear {language} to non-technical users. "
+        "Keep your summary concise (2-4 sentences). "
+        "Do NOT mention SQL, tables, columns, or technical terms. "
+        "Focus on what the data means in plain language."
+    )
+
+    user_prompt = (
+        f"A user asked: \"{question}\"\n\n"
+        f"Here is the result:\n{result_snapshot}\n\n"
+        "Please write a short, friendly summary explaining what this result means."
+    )
+
+    try:
+        client = openai.OpenAI(api_key=api_key)
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user",   "content": user_prompt},
+            ],
+            max_tokens=200,
+            temperature=0.4,
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as exc:                          # never crash the main flow
+        return f"Results fetched successfully. ({exc})"
+
 
 # ─── Public query runner ──────────────────────────────────────────────────────
 
-def run_query(instance_key: str, question: str) -> dict:
+def run_query(instance_key: str, question: str, summary_question: Optional[str] = None) -> dict:
     """
     Normalize → Generate SQL → Validate → Execute.
 
@@ -347,6 +418,7 @@ def run_query(instance_key: str, question: str) -> dict:
                 "sql": None, "results": None,
                 "normalized_question": normalized_question,
                 "normalization_method": norm_method,
+                "nl_summary": None,
                 "error": "Could not generate SQL for that question.",
             }
 
@@ -357,6 +429,7 @@ def run_query(instance_key: str, question: str) -> dict:
                 "sql": None, "results": None,
                 "normalized_question": normalized_question,
                 "normalization_method": norm_method,
+                "nl_summary": None,
                 "error": user_msg,
             }
 
@@ -366,6 +439,7 @@ def run_query(instance_key: str, question: str) -> dict:
                 "sql": None, "results": None,
                 "normalized_question": normalized_question,
                 "normalization_method": norm_method,
+                "nl_summary": None,
                 "error": (
                     "This question requires looking at actual data values to build the query. "
                     "Data introspection is now enabled — please try again."
@@ -378,7 +452,8 @@ def run_query(instance_key: str, question: str) -> dict:
                 "sql": None, "results": None,
                 "normalized_question": normalized_question,
                 "normalization_method": norm_method,
-                "error": f"The model returned an unexpected response instead of SQL: {sql[:200]}",
+                "nl_summary": None,
+                "error": f"The model returned an unexpected response instead of SQL: {sql}",
             }
 
         # ── Guard: lexical schema validation ──────────────────────────────────
@@ -388,6 +463,7 @@ def run_query(instance_key: str, question: str) -> dict:
                 "sql": None, "results": None,
                 "normalized_question": normalized_question,
                 "normalization_method": norm_method,
+                "nl_summary": None,
                 "error": schema_error,
             }
 
@@ -406,6 +482,10 @@ def run_query(instance_key: str, question: str) -> dict:
                         return None
                 except (TypeError, ValueError):
                     pass
+                # ← Add this block:
+                if isinstance(val, (bytes, bytearray)):
+                    import base64
+                    return base64.b64encode(val).decode('utf-8')
                 if isinstance(val, float) and val.is_integer():
                     return int(val)
                 return val
@@ -416,11 +496,22 @@ def run_query(instance_key: str, question: str) -> dict:
             ]
         else:
             results = []
+
+        # ── Generate NL summary ───────────────────────────────────────────────
+        nl_summary = generate_nl_summary(
+            question=summary_question or question,   # use clean question if provided
+            sql=sql,
+            results=results,
+            error=None,
+            api_key=settings.openai_api_key,
+        )
+
         return {
             "sql": sql,
             "results": results,
             "normalized_question": normalized_question,
             "normalization_method": norm_method,
+            "nl_summary": nl_summary,
             "error": None,
         }
 
@@ -431,12 +522,14 @@ def run_query(instance_key: str, question: str) -> dict:
                 "sql": None, "results": None,
                 "normalized_question": normalized_question,
                 "normalization_method": norm_method,
+                "nl_summary": None,
                 "error": "Data introspection was required. allow_llm_to_see_data is enabled — please retry.",
             }
         return {
             "sql": None, "results": None,
             "normalized_question": normalized_question,
             "normalization_method": norm_method,
+            "nl_summary": None, 
             "error": err,
         }
 

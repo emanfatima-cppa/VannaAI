@@ -31,6 +31,14 @@ export default function MessageBubble({ message }) {
             <span style={styles.dot} />
           </div>
         )}
+
+        {/* NL Summary */}
+        {message.nl_summary && !message.loading && (
+          <div style={styles.nlSummary}>
+            {message.nl_summary}
+          </div>
+        )}
+
  
         {/* SQL collapsible */}
         {message.sql && !message.loading && (
@@ -50,7 +58,8 @@ export default function MessageBubble({ message }) {
         {message.results && !message.loading && (
           <ResultsTable results={message.results} />
         )}
- 
+
+        
         {/* Feedback */}
         {!message.loading && !message.error && message.sql && (
           <FeedbackButtons
@@ -143,6 +152,25 @@ const styles = {
     maxWidth: '70%', padding: '10px 16px',
     background: 'var(--accent)', color: '#0a0c10',
     borderRadius: '14px 14px 4px 14px', fontWeight: 500, fontSize: 13,
+  },
+  nlSummary: {
+    marginBottom: 14,
+    padding: '12px 14px',
+    background: 'var(--bg-1)',
+    border: '1px solid var(--border)',
+    borderLeft: '4px solid var(--accent)',
+    borderRadius: '10px',
+    color: 'var(--text-primary)',
+    fontSize: 14,
+    lineHeight: 1.7,
+  },
+  summaryLabel: {
+    fontSize: 11,
+    fontWeight: 700,
+    textTransform: 'uppercase',
+    letterSpacing: '0.08em',
+    color: 'var(--accent)',
+    marginBottom: 6,
   },
   assistantRow: { display: 'flex', justifyContent: 'flex-start', marginBottom: 16 },
   assistantBubble: {
