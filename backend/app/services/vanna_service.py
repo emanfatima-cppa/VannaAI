@@ -1,6 +1,11 @@
 """app/services/vanna_service.py
 One Vanna instance per DB instance, lazily created and cached.
 Uses OpenAI as the LLM backend.
+
+Intent normalization is applied to every incoming question before SQL generation
+so that synonym variations ("participants", "attendees", "sessions", etc.) are
+transparently resolved to the canonical vocabulary used in training data and
+documentation.
 """
 import os
 import re
@@ -12,6 +17,7 @@ from vanna.chromadb import ChromaDB_VectorStore
 
 from app.core.config import get_settings
 from app.db.connection_manager import get_connection, INSTANCE_CONN_STRINGS
+from app.services.intent_normalizer import normalize_with_llm_fallback
 
 settings = get_settings()
 
@@ -46,52 +52,40 @@ class OpenAIVanna(ChromaDB_VectorStore, OpenAI_Chat):
         if schema_block:
             constraint = (
                 "STRICT RULES — you MUST follow these before writing any SQL:\n"
-
                 "1. Only use tables and columns listed in the schema below. "
                 "Do NOT invent, guess, or abbreviate any table or column name.\n"
 
-                "2. Understand semantic equivalents, business terminology, and synonyms. "
-                "Map user concepts to the most appropriate table and column available in "
-                "the schema. Examples: employee/staff/personnel, committee/board/panel, "
-                "member/user/person, department/division/unit, etc. "
-                "Use schema columns that represent the requested concept even if the user "
-                "uses different wording.\n"
+                "2. Use NO_MATCH ONLY when the user asks for a concept whose data is stored "
+                "in NO column in the schema (e.g. 'salary' when no salary column exists). "
+                "NEVER return NO_MATCH just because a specific name, value, or keyword "
+                "mentioned by the user (e.g. '13AP Com', 'Finance Board', 'John') does not "
+                "appear in the schema — those are filter VALUES, not column names. "
+                "Filter values are supplied by the user at runtime and are never listed in "
+                "the schema. When the user mentions a name or value, use the appropriate "
+                "filtering strategy based on the column type.\n"
 
-                "3. NEVER change user-provided values. Any names, titles, codes, numbers, "
-                "dates, identifiers, remarks, committee names, member names, or other "
-                "filter values mentioned by the user must be preserved exactly as provided. "
-                "Do not correct spelling, expand abbreviations, translate, normalize, "
-                "rephrase, or substitute them.\n"
+                "3. Never use SELECT *. Always name columns explicitly.\n\n"
 
-                "4. Use NO_MATCH ONLY when the user asks for a concept whose data is stored "
-                "in NO column in the schema. "
-                "Do NOT return NO_MATCH because a user-supplied value is not visible in the "
-                "schema. Values are runtime data and are never expected to appear in the schema.\n"
-
-                "5. Never use SELECT *. Always name columns explicitly.\n"
-
-                "6. For entity names, titles, descriptions, remarks, addresses, dates, time "
-                "and other free-text/searchable columns, use LIKE with wildcards.\n"
+                "4. For entity names, titles, descriptions, remarks, addresses, dates, time and other "
+                "free-text/searchable columns, use the SQL LIKE operator with wildcards.\n"
                 "Examples:\n"
                 "   MemberName LIKE '%John%'\n"
                 "   CommitteeName LIKE '%Finance%'\n"
-                "   Remarks LIKE '%meeting%'\n"
-                "   Time LIKE '%6:30 PM%'\n\n"
+                "   Remarks LIKE '%meeting%'\n\n"
+                "   Time LIKE %6:30 PM%\n\n"
 
-                "7. For categorical or enumerated columns (Gender, Status, Type, ActiveFlag, "
-                "MaritalStatus, approval states, Yes/No flags, codes, etc.), use exact "
-                "matching (=) unless the user explicitly requests a partial search.\n"
+                "5. For categorical or enumerated columns (e.g. Gender, Status, Type, "
+                "ActiveFlag, MaritalStatus, Yes/No fields, approval states, codes, or "
+                "other fixed-value fields), use exact matching (=) instead of LIKE unless "
+                "the user explicitly requests a partial search.\n"
                 "Examples:\n"
                 "   Gender = 'Male'\n"
                 "   Status = 'Active'\n"
                 "   ActiveFlag = 'Y'\n\n"
 
-                "8. To find attachments for an agenda, filter MtAttachment_Source = 'MeetingAgenda'"
-                "To find attachments for MoM, filter MtAttachment_Source = 'MoM'"
-                "To find attachments for MoM Miscellaneous, filter MtAttachment_Source = 'MoM_Miscellaneous'"
-
-                "IMPORTANT: Do NOT use LIKE for categorical values where one value may be a "
-                "substring of another.\n\n"
+                "IMPORTANT: Do NOT use LIKE for categorical values where one value may be "
+                "a substring of another. For example, use Gender = 'Male' instead of "
+                "Gender LIKE '%Male%' because it could also match 'Female'.\n\n"
 
                 f"AVAILABLE SCHEMA:\n{schema_block}\n"
                 "─────────────────────────────────────────\n"
@@ -235,7 +229,7 @@ def _validate_sql_against_schema(sql: str, schema: dict[str, list[str]]) -> Opti
 
     known_aliases_upper = set(table_alias_pattern) | set(col_alias_pattern)
 
-    # ── Strip string literals AND comments so their words aren't tokenized ────
+    # ── Strip string literals so their words aren't tokenized ─────────────────
     sql_no_strings = re.sub(r"'[^']*'", "", sql)
     sql_no_strings = re.sub(r"--[^\n]*", "", sql_no_strings)
     sql_no_strings = re.sub(r"/\*.*?\*/", "", sql_no_strings, flags=re.DOTALL)
@@ -275,7 +269,7 @@ def _validate_sql_against_schema(sql: str, schema: dict[str, list[str]]) -> Opti
         "ABS", "CEILING", "FLOOR", "ROUND", "POWER", "SQRT", "SIGN",
         "NEWID", "SCOPE_IDENTITY",
         # Schema qualifiers
-        "DBO", "SYS", "INFORMATION_SCHEMA", "ROWS", "FETCH", "NEXT", "ONLY",
+        "DBO", "SYS", "INFORMATION_SCHEMA",
     }
 
     col_tokens = re.findall(r'\b([A-Za-z_]\w*)\b', sql_no_strings)
@@ -316,11 +310,24 @@ def _is_valid_sql(text: str) -> bool:
 
 def run_query(instance_key: str, question: str) -> dict:
     """
-    Generate SQL → Validate → Execute.
+    Normalize → Generate SQL → Validate → Execute.
 
-    Returns { sql, results, error }.
+    The normalization step maps user synonyms ("participants", "attendees",
+    "sessions", etc.) to the canonical vocabulary used in training data,
+    so Vanna's vector similarity search finds the right Q&A examples.
+
+    Returns { sql, results, normalized_question, normalization_method, error }.
     """
     vn = get_vanna(instance_key)
+
+    # ── Step 1: Normalize the question ────────────────────────────────────────
+    # Fast keyword substitution first; LLM rewrite only when nothing changed.
+    normalized_question, norm_method = normalize_with_llm_fallback(
+        question=question,
+        api_key=settings.openai_api_key,
+        model="gpt-4.1-mini",   # cheap model is fine for rewriting
+        always_rewrite=False,   # flip to True if you want LLM on every query
+    )
 
     # Load and format the real schema for this instance
     schema = _load_schema(instance_key)
@@ -328,7 +335,7 @@ def run_query(instance_key: str, question: str) -> dict:
 
     try:
         sql = vn.generate_sql(
-            question=question,
+            question=normalized_question,   # ← normalized, not raw
             allow_llm_to_see_data=True,
             schema_constraint=schema_block,
         )
@@ -337,6 +344,8 @@ def run_query(instance_key: str, question: str) -> dict:
         if not sql:
             return {
                 "sql": None, "results": None,
+                "normalized_question": normalized_question,
+                "normalization_method": norm_method,
                 "error": "Could not generate SQL for that question.",
             }
 
@@ -345,6 +354,8 @@ def run_query(instance_key: str, question: str) -> dict:
             user_msg = sql.strip().removeprefix("NO_MATCH:").strip()
             return {
                 "sql": None, "results": None,
+                "normalized_question": normalized_question,
+                "normalization_method": norm_method,
                 "error": user_msg,
             }
 
@@ -352,6 +363,8 @@ def run_query(instance_key: str, question: str) -> dict:
         if _INTROSPECTION_MARKER in sql:
             return {
                 "sql": None, "results": None,
+                "normalized_question": normalized_question,
+                "normalization_method": norm_method,
                 "error": (
                     "This question requires looking at actual data values to build the query. "
                     "Data introspection is now enabled — please try again."
@@ -362,6 +375,8 @@ def run_query(instance_key: str, question: str) -> dict:
         if not _is_valid_sql(sql):
             return {
                 "sql": None, "results": None,
+                "normalized_question": normalized_question,
+                "normalization_method": norm_method,
                 "error": f"The model returned an unexpected response instead of SQL: {sql[:200]}",
             }
 
@@ -370,18 +385,22 @@ def run_query(instance_key: str, question: str) -> dict:
         if schema_error:
             return {
                 "sql": None, "results": None,
+                "normalized_question": normalized_question,
+                "normalization_method": norm_method,
                 "error": schema_error,
             }
 
         # ── Execute ───────────────────────────────────────────────────────────
         df = vn.run_sql(sql)
         if df is not None:
-            import pandas as pd
-
+            # Convert nullable float-integers back to int where possible,
+            # and replace NaN/NaT with None for JSON safety
+            import math
             def sanitize(val):
                 if val is None:
                     return None
                 try:
+                    import pandas as pd
                     if pd.isna(val):
                         return None
                 except (TypeError, ValueError):
@@ -396,10 +415,11 @@ def run_query(instance_key: str, question: str) -> dict:
             ]
         else:
             results = []
-
         return {
             "sql": sql,
             "results": results,
+            "normalized_question": normalized_question,
+            "normalization_method": norm_method,
             "error": None,
         }
 
@@ -408,10 +428,14 @@ def run_query(instance_key: str, question: str) -> dict:
         if _INTROSPECTION_MARKER in err:
             return {
                 "sql": None, "results": None,
+                "normalized_question": normalized_question,
+                "normalization_method": norm_method,
                 "error": "Data introspection was required. allow_llm_to_see_data is enabled — please retry.",
             }
         return {
             "sql": None, "results": None,
+            "normalized_question": normalized_question,
+            "normalization_method": norm_method,
             "error": err,
         }
 

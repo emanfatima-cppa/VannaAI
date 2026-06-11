@@ -279,9 +279,8 @@ DUMMY_TRAINING: dict[str, dict] = {
             - MtAttachment_FileSizeBytes (bigint)
             - MtAttachment_EcmFileId (decimal)
             - MtAttachment_IsDeleted (bit) – use = 0 for active attachments
-            To find attachments for an agenda, filter MtAttachment_Source = 'MeetingAgenda',
-            To find attachments for MoM, filter MtAttachment_Source = 'MoM',
-            To find attachments for MoM Miscellaneous, filter MtAttachment_Source = 'MoM_Miscellaneous',
+            To find attachments for an agenda, filter MtAttachment_Source = 'Agenda' (or similar)
+            and join on MtAttachment_SourceId = MtMeetingAgenda_Id.
             """,
 
             # ── Table: MtSharedAttachment ─────────────────────────────────────────
@@ -546,24 +545,6 @@ DUMMY_TRAINING: dict[str, dict] = {
                     ) AS RecentMeetings
                     WHERE RowNum = 2
                 )
-            """
-        },
-        {
-            "question": "name the file that is attached in the agenda of meeting 'meetin gen'",
-            "sql": """
-                SELECT 
-                    a.MtAttachment_FileName
-                FROM MtMeetingHeader AS m
-                INNER JOIN MtMeetingAgenda AS ag
-                    ON m.MtMeetingHeader_Id = ag.MtMeetingHeader_Id
-                INNER JOIN MtAttachment AS a
-                    ON a.MtAttachment_SourceId = ag.MtMeetingAgenda_Id
-                AND a.MtAttachment_Source = 'meetingAGENDA'
-                WHERE m.MtMeetingHeader_Isdeleted = 0
-                AND ag.MtMeetingAgenda_Isdeleted = 0
-                AND a.MtAttachment_IsDeleted = 0
-                AND m.MtMeetingHeader_Title = 'meetin gen';
-
             """
         },
             {
