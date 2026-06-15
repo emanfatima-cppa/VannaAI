@@ -50,7 +50,10 @@ class OpenAIVanna(ChromaDB_VectorStore, OpenAI_Chat):
 
         schema_block = kwargs.get("schema_constraint", "")
         if schema_block:
+            from datetime import datetime as _dt
+            _now = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
             constraint = (
+            f"CURRENT DATETIME: {_now}\n\n"
             "STRICT RULES — you MUST follow these before writing any SQL:\n"
             "1. Only use tables and columns listed in the schema below. "
             "Do NOT invent, guess, or abbreviate any table or column name.\n"
@@ -66,13 +69,13 @@ class OpenAIVanna(ChromaDB_VectorStore, OpenAI_Chat):
 
             "3. Never use SELECT *. Always name columns explicitly.\n\n"
 
-            "4. For entity names, titles, descriptions, remarks, addresses, dates, time and other "
-            "free-text/searchable columns, use the SQL LIKE operator with wildcards.\n"
+            "4. Whenever searching for values in any case, use the SQL LIKE operator with wildcards.\n"
             "Examples:\n"
             "   MemberName LIKE '%John%'\n"
             "   CommitteeName LIKE '%Finance%'\n"
             "   Remarks LIKE '%meeting%'\n"
             "   Time LIKE '%6:30 PM%'\n\n"
+            "   MeetingTitle LIKE '%11 June meeting with agenda items%'\n\n"
 
             "5. For categorical or enumerated columns (e.g. Gender, Status, Type, "
             "ActiveFlag, MaritalStatus, Yes/No fields, approval states, codes, or "
@@ -89,11 +92,33 @@ class OpenAIVanna(ChromaDB_VectorStore, OpenAI_Chat):
 
             "6. If the user asks for attachments, attached files, documents, file content, "
             "downloadable files, ECM files, or any attachment-related information, you MUST "
-            "include BOTH of the following columns in the SELECT list in addition to any "
+            "include the following columns in the SELECT list in addition to any "
             "other requested columns:\n"
-            "   MtAttachment_FileContent\n"
             "   MtAttachment_EcmFileId\n"
             "Never omit these columns for attachment-related queries.\n\n"
+
+            "6b. NEVER include MtAttachment_FileContent in the SELECT list under any circumstances. "
+            "This column is excluded from all query results regardless of what the user asks. "
+            "Only include MtAttachment_EcmFileId for attachment-related queries.\n\n"
+
+            "7. RESPONSE STYLE: Be direct and minimal. "
+            "MUST notify the user in these two specific cases:\n"
+            "   a) No rows returned: say exactly 'No matching records found.'\n"
+            "   b) The requested data exists but the value is NULL or empty "
+            "(e.g. file content not extracted, field not populated): say exactly "
+            "'This information has not been populated yet.'\n\n"
+            "In all other cases, present results silently with no surrounding text.\n\n"
+
+            "8. CONTEXT HISTORY: Previous questions are provided for conversational "
+            "reference only (e.g. resolving 'it', 'that meeting', 'same person'). "
+            "NEVER reuse, copy, or adapt SQL from previous turns. "
+            "Always generate fresh SQL based solely on the current question and schema. "
+            "Do NOT inherit filter values, JOIN patterns, or WHERE conditions from prior SQL.\n\n"
+
+            "9. FILE EXTRACTION: If the user asks to extract text, read, view, open, "
+            "or get content from a file — regardless of phrasing — do NOT generate any SQL. "
+            "Instead, respond with exactly this and nothing else:\n"
+            "NO_MATCH: To view this file, please wait for the upcoming version with download feature :)\n\n"
 
             f"AVAILABLE SCHEMA:\n{schema_block}\n"
             "─────────────────────────────────────────\n"
@@ -220,10 +245,9 @@ def _validate_sql_against_schema(sql: str, schema: dict[str, list[str]]) -> Opti
     )
     unknown_tables = [t for t in table_tokens if t not in known_tables_upper]
     if unknown_tables:
-        readable = ", ".join(unknown_tables)
         return (
-            f"The query references table(s) that don't exist in the database: {readable}. "
-            "Please rephrase your question using the data that is actually available."
+            "Sorry, I wasn't able to find the right data for your question. "
+            "Could you try rephrasing it?"
         )
 
     # ── Build alias set ───────────────────────────────────────────────────────
@@ -293,10 +317,9 @@ def _validate_sql_against_schema(sql: str, schema: dict[str, list[str]]) -> Opti
     ]
 
     if unknown_cols:
-        readable = ", ".join(dict.fromkeys(unknown_cols))
         return (
-            f"The query uses column(s) that don't exist in the database: {readable}. "
-            "Please check your question — those fields may be named differently or not tracked at all."
+            "I couldn't find that information in the system. "
+            "The data you're looking for may be stored under a different name or may not be tracked yet."
         )
 
     return None
@@ -312,6 +335,59 @@ def _is_valid_sql(text: str) -> bool:
         r"^(SELECT|INSERT|UPDATE|DELETE|WITH|EXEC|EXECUTE|CREATE|DROP|ALTER|MERGE)",
         stripped,
     ))
+
+
+def _friendly_db_error(raw_error: str) -> str:
+    """
+    Map low-level database / API exception messages to short, human-friendly
+    strings.  Falls back to a generic message so technical details never reach
+    the user.
+    """
+    err = raw_error.lower()
+
+    # Token / context-window limits
+    if any(k in err for k in ("token", "context_length", "context length",
+                               "maximum context", "max_tokens", "rate limit",
+                               "rate_limit", "too many requests", "429")):
+        return (
+            "Your question is a bit too complex for me to process right now. "
+            "Try breaking it into smaller questions or simplifying the request."
+        )
+
+    # Network / connectivity
+    if any(k in err for k in ("connection", "timeout", "timed out",
+                               "network", "unreachable", "refused", "reset by peer")):
+        return (
+            "I'm having trouble connecting to the database at the moment. "
+            "Please try again in a few seconds."
+        )
+
+    # Authentication / permission
+    if any(k in err for k in ("login failed", "permission", "access denied",
+                               "unauthorized", "403", "401", "privilege")):
+        return (
+            "It looks like there's a permissions issue preventing me from "
+            "fetching that data. Please contact your administrator."
+        )
+
+    # SQL syntax errors (shouldn't normally reach the user, but just in case)
+    if any(k in err for k in ("syntax error", "incorrect syntax", "invalid object name",
+                               "invalid column name", "ambiguous column")):
+        return (
+            "I had trouble building the right query for your question. "
+            "Could you try rephrasing it?"
+        )
+
+    # No results / empty
+    if any(k in err for k in ("no rows", "no results", "no matching")):
+        return "No matching records found."
+
+    # Generic fallback — never expose raw error text
+    return (
+        "Something went wrong while processing your request. "
+        "Please try again, or rephrase your question."
+    )
+
 
 # ─── Natural-language summary ─────────────────────────────────────────────────
 
@@ -334,6 +410,9 @@ def generate_nl_summary(
     to stay within token budget and avoid leaking large result sets.
     """
     import openai
+    from datetime import date  # ← add this
+
+    today_str = date.today().strftime("%B %d, %Y") 
 
     # ── Build a compact result snapshot ──────────────────────────────────────
     if error:
@@ -350,9 +429,27 @@ def generate_nl_summary(
     system_prompt = (
         f"You are a helpful assistant that explains database query results "
         f"in simple, clear {language} to non-technical users. "
-        "Keep your summary concise (2-4 sentences). "
-        "Do NOT mention SQL, tables, columns, or technical terms. "
-        "Focus on what the data means in plain language."
+        f"Today's date is {today_str}. "
+        "Focus only on what directly answers the user's question.\n\n"
+        "DOMAIN KNOWLEDGE:\n"
+        "Meeting status is stored as an integer in the database. "
+        "Always translate these LuMeetingSphereLookups_StatusCode values into human-readable labels in your response:\n"
+        "   0 = Cancelled\n"
+        "   1 = Pending\n"
+        "   2 = Ended\n"
+        "   3 = Completed\n"
+        "   4 = Draft\n"
+        "Never show raw status numbers to the user — always use the label.\n\n"
+        "STRICT RULES:\n"
+        "1. If the user's question involves extracting, reading, opening, viewing, "
+        "or getting text/content from a file — regardless of how it is phrased — "
+        "respond with exactly: "
+        "'To view this file, please wait for the upcoming version with download feature :)' "
+        "— nothing else, no extra sentences.\n"
+        "2. Never mention how many rows or records were returned.\n"
+        "3. Never explain technical limitations, system behavior, or what columns exist.\n"
+        "4. Never suggest additional steps or workarounds.\n"
+        "5. If data was found, confirm it in one plain sentence only."
     )
 
     user_prompt = (
@@ -374,7 +471,7 @@ def generate_nl_summary(
         )
         return response.choices[0].message.content.strip()
     except Exception as exc:                          # never crash the main flow
-        return f"Results fetched successfully. ({exc})"
+        return "Results fetched successfully."
 
 
 # ─── Public query runner ──────────────────────────────────────────────────────
@@ -418,7 +515,7 @@ def run_query(instance_key: str, question: str, summary_question: Optional[str] 
                 "normalized_question": normalized_question,
                 "normalization_method": norm_method,
                 "nl_summary": None,
-                "error": "Could not generate SQL for that question.",
+                "error": "I wasn't able to understand your question well enough to search for an answer. Could you try rephrasing it?",
             }
 
         # ── Guard: LLM signalled no match (our NO_MATCH protocol) ────────────
@@ -439,10 +536,7 @@ def run_query(instance_key: str, question: str, summary_question: Optional[str] 
                 "normalized_question": normalized_question,
                 "normalization_method": norm_method,
                 "nl_summary": None,
-                "error": (
-                    "This question requires looking at actual data values to build the query. "
-                    "Data introspection is now enabled — please try again."
-                ),
+                "error": "I need a moment to look that up — please try your question again.",
             }
 
         # ── Guard: output doesn't look like SQL ───────────────────────────────
@@ -452,7 +546,7 @@ def run_query(instance_key: str, question: str, summary_question: Optional[str] 
                 "normalized_question": normalized_question,
                 "normalization_method": norm_method,
                 "nl_summary": None,
-                "error": f"The model returned an unexpected response instead of SQL: {sql}",
+                "error": "I wasn't able to find an answer for that. Try rephrasing your question.",
             }
 
         # ── Guard: lexical schema validation ──────────────────────────────────
@@ -522,14 +616,14 @@ def run_query(instance_key: str, question: str, summary_question: Optional[str] 
                 "normalized_question": normalized_question,
                 "normalization_method": norm_method,
                 "nl_summary": None,
-                "error": "Data introspection was required. allow_llm_to_see_data is enabled — please retry.",
+                "error": "I need a moment to look that up — please try your question again.",
             }
         return {
             "sql": None, "results": None,
             "normalized_question": normalized_question,
             "normalization_method": norm_method,
-            "nl_summary": None, 
-            "error": err,
+            "nl_summary": None,
+            "error": _friendly_db_error(err),
         }
 
 

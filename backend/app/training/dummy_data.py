@@ -394,6 +394,25 @@ DUMMY_TRAINING: dict[str, dict] = {
         ],
         "qa_pairs": [
             {
+                "question": "when was the last meeting held?",
+                "sql": """
+                    SELECT 
+                        m.MtMeetingHeader_Id,
+                        m.MtMeetingHeader_Title,
+                        m.MtMeetingHeader_MeetingDate,
+                        m.MtMeetingHeader_MeetingStartTime,
+                        m.MtCommitteeHeader_Id
+                    FROM MtMeetingHeader AS m
+                    WHERE m.MtMeetingHeader_Isdeleted = 0
+                    AND m.MtMeetingHeader_MeetingDate = (
+                            SELECT MAX(MtMeetingHeader_MeetingDate)
+                            FROM MtMeetingHeader
+                            WHERE MtMeetingHeader_Isdeleted = 0
+                    )
+                    ORDER BY m.MtCommitteeHeader_Id, m.MtMeetingHeader_Id;
+                """
+            },
+            {
                 "question": "is there any guest whose name is Eman",
                 "sql": """
                    SELECT DISTINCT
