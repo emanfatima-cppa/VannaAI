@@ -10,6 +10,7 @@ INSTANCE_CONN_STRINGS: dict[str, str] = {
     "hr_salaries":       settings.db_connection_string,
     "it_meetingsphere":  settings.db_connection_string,
     "it_cdxp":            settings.azure_sql_connection_string,
+    "it_rms":            settings.rms_connection_string,
 }
 
 # ── Instance → human readable metadata ───────────────────────────────────────
@@ -37,6 +38,12 @@ INSTANCE_META: dict[str, dict] = {
         "group": "IT_docs",
         "db_type": "azure_sql",
         "description": "Resource Management System on Azure SQL",
+    },
+     "it_rms": {
+        "label": "IT – RMS (ECM Offline)",
+        "group": "IT_docs",
+        "db_type": "sqlserver",
+        "description": "RMS record management database (ecmoffline_dev)",
     },
 }
 

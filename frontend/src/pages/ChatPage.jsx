@@ -11,6 +11,7 @@ const SUGGESTED = {
   hr_salaries:      ['What is the average salary by department?', 'Show all salary band ranges', 'Who earns above their band maximum?'],
   it_meetingsphere: ['How many meetings this month?', 'Which room is most booked?', 'Who are the top 5 organizers?'],
   it_cdxp:           ['Which projects are over budget?', 'Show resource utilisation this month', 'Who is on more than 2 active projects?'],
+  it_rms:            ['What is the total number of records in the RMS database?', 'Show all active records', 'Who last modified a specific record?'],
 }
 
 export default function ChatPage() {

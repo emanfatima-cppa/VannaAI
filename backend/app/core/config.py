@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     # DB
     db_connection_string: str
     azure_sql_connection_string: str
+    rms_connection_string: str
 
     # Auth
     secret_key: str = "change-me"

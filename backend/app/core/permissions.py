@@ -7,6 +7,7 @@ INSTANCE_ROLES: dict[str, list[str]] = {
     "hr_salaries":       ["hr_admin"],
     "it_meetingsphere":  ["it_admin", "it_viewer"],
     "it_cdxp":            ["it_admin", "it_viewer"],
+    "it_rms": ["it_admin", "it_viewer"],
 }
 
 

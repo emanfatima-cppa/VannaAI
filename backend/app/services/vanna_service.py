@@ -92,14 +92,15 @@ class OpenAIVanna(ChromaDB_VectorStore, OpenAI_Chat):
 
             "6. If the user asks for attachments, attached files, documents, file content, "
             "downloadable files, ECM files, or any attachment-related information, you MUST "
-            "include the following columns in the SELECT list in addition to any "
+            "include BOTH of the following columns in the SELECT list in addition to any "
             "other requested columns:\n"
+            "   MtAttachment_FileName\n"
             "   MtAttachment_EcmFileId\n"
             "Never omit these columns for attachment-related queries.\n\n"
 
             "6b. NEVER include MtAttachment_FileContent in the SELECT list under any circumstances. "
             "This column is excluded from all query results regardless of what the user asks. "
-            "Only include MtAttachment_EcmFileId for attachment-related queries.\n\n"
+            "Only include MtAttachment_FileName and MtAttachment_EcmFileId for attachment-related queries.\n\n"
 
             "7. RESPONSE STYLE: Be direct and minimal. "
             "MUST notify the user in these two specific cases:\n"
@@ -410,9 +411,9 @@ def generate_nl_summary(
     to stay within token budget and avoid leaking large result sets.
     """
     import openai
-    from datetime import date  # ← add this
+    from datetime import date
 
-    today_str = date.today().strftime("%B %d, %Y") 
+    today_str = date.today().strftime("%B %d, %Y")
 
     # ── Build a compact result snapshot ──────────────────────────────────────
     if error:
@@ -440,16 +441,32 @@ def generate_nl_summary(
         "   3 = Completed\n"
         "   4 = Draft\n"
         "Never show raw status numbers to the user — always use the label.\n\n"
+        "ATTACHMENT LINKS:\n"
+        "If the results contain MtAttachment_EcmFileId and MtAttachment_FileName columns:\n"
+        "  - Only build a link when MtAttachment_EcmFileId is NOT null and NOT empty.\n"
+        "  - URL pattern: https://cppapk.sharepoint.com/sites/staging/Meeting%20Sphere/{MtAttachment_EcmFileId}_{MtAttachment_FileName}\n"
+        "  - If the results also contain a meeting/title column, include it in the label: 'FileName.pdf — MeetingName'\n"
+        "  - Each ATTACHMENT_LINK MUST be on its own separate line. NEVER place it inline with prose text.\n"
+        "  - Structure your response exactly like this:\n"
+        "      <one plain intro sentence ending with a colon or period>\n"
+        "      (blank line)\n"
+        '      ATTACHMENT_LINK::{"url":"...","label":"..."}\n'
+        '      ATTACHMENT_LINK::{"url":"...","label":"..."}\n'
+        "  - No text of any kind after the last ATTACHMENT_LINK line.\n"
+        "  - If MtAttachment_EcmFileId is null for a row, list the filename as plain text only — no ATTACHMENT_LINK line.\n"
+        "  - Never mention EcmFileId values or technical column names to the user.\n\n"
         "STRICT RULES:\n"
-        "1. If the user's question involves extracting, reading, opening, viewing, "
-        "or getting text/content from a file — regardless of how it is phrased — "
-        "respond with exactly: "
+        "1. Rule 1 applies ONLY when the user asks to extract, read, or get the text CONTENT "
+        "from inside a file (e.g. 'read this pdf', 'show me what's written in the file'). "
+        "It does NOT apply when the user is simply listing, finding, or asking about attachments. "
+        "For listing/finding attachments, show the results normally.\n"
+        "   When rule 1 does apply, respond with exactly: "
         "'To view this file, please wait for the upcoming version with download feature :)' "
-        "— nothing else, no extra sentences.\n"
+        "— nothing else.\n"
         "2. Never mention how many rows or records were returned.\n"
         "3. Never explain technical limitations, system behavior, or what columns exist.\n"
         "4. Never suggest additional steps or workarounds.\n"
-        "5. If data was found, confirm it in one plain sentence only."
+        "5. If data was found, confirm it in one plain sentence only, then list ATTACHMENT_LINK lines if applicable."
     )
 
     user_prompt = (

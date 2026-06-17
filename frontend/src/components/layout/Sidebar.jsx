@@ -32,7 +32,7 @@ export default function Sidebar() {
       {/* Logo */}
       <div style={styles.brand}>
         <span style={styles.brandMark}>▲</span>
-        <span style={styles.brandText}>VANNA<span style={styles.brandAccent}>.AI</span></span>
+        <span style={styles.brandText}>CORTEXA<span style={styles.brandAccent}>.AI</span></span>
       </div>
 
       {/* User pill */}

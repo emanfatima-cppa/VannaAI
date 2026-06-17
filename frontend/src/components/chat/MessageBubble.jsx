@@ -1,8 +1,49 @@
 // src/components/chat/MessageBubble.jsx
 import { useState } from 'react'
-import { ChevronDown, ChevronRight, Code2, AlertCircle } from 'lucide-react'
+import { ChevronDown, ChevronRight, Code2, AlertCircle, Paperclip } from 'lucide-react'
 import ResultsTable from './ResultsTable'
 import FeedbackButtons from '../feedback/FeedbackButtons'
+
+// ── Parse nl_summary into plain text segments and attachment link objects ─────
+// The LLM embeds attachment links as:
+//   ATTACHMENT_LINK::{"url":"...","label":"..."}
+// This function splits the summary into an ordered array of:
+//   { type: 'text', content: string }
+//   { type: 'attachment', url: string, label: string }
+function parseSummary(summary) {
+  if (!summary) return []
+  const parts = []
+  const lines = summary.split('\n')
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (trimmed.startsWith('ATTACHMENT_LINK::')) {
+      try {
+        const json = trimmed.slice('ATTACHMENT_LINK::'.length)
+        const { url, label } = JSON.parse(json)
+        parts.push({ type: 'attachment', url, label })
+      } catch {
+        // Malformed — fall through and treat as text
+        parts.push({ type: 'text', content: line })
+      }
+    } else {
+      parts.push({ type: 'text', content: line })
+    }
+  }
+  // Merge consecutive text lines back into paragraphs
+  const merged = []
+  for (const part of parts) {
+    if (part.type === 'text') {
+      if (merged.length > 0 && merged[merged.length - 1].type === 'text') {
+        merged[merged.length - 1].content += '\n' + part.content
+      } else {
+        merged.push({ type: 'text', content: part.content })
+      }
+    } else {
+      merged.push(part)
+    }
+  }
+  return merged.filter(p => !(p.type === 'text' && p.content.trim() === ''))
+}
 
 export default function MessageBubble({ message }) {
   const [sqlOpen, setSqlOpen] = useState(false)
@@ -16,13 +57,15 @@ export default function MessageBubble({ message }) {
     )
   }
 
-    // Assistant bubble
+  const summaryParts = parseSummary(message.nl_summary)
+
+  // Assistant bubble
   return (
     <div style={styles.assistantRow}>
       <div style={styles.assistantBubble}>
         {/* Error state */}
         {message.error && <ErrorBox error={message.error} sql={message.sql} />}
- 
+
         {/* Loading */}
         {message.loading && (
           <div style={styles.loading}>
@@ -32,14 +75,19 @@ export default function MessageBubble({ message }) {
           </div>
         )}
 
-        {/* NL Summary */}
-        {message.nl_summary && !message.loading && (
+        {/* NL Summary — text segments + attachment link cards */}
+        {summaryParts.length > 0 && !message.loading && (
           <div style={styles.nlSummary}>
-            {message.nl_summary}
+            {summaryParts.map((part, i) =>
+              part.type === 'attachment' ? (
+                <AttachmentLink key={i} url={part.url} label={part.label} />
+              ) : (
+                <span key={i} style={{ whiteSpace: 'pre-wrap' }}>{part.content}</span>
+              )
+            )}
           </div>
         )}
 
- 
         {/* SQL collapsible */}
         {message.sql && !message.loading && (
           <>
@@ -53,13 +101,12 @@ export default function MessageBubble({ message }) {
             )}
           </>
         )}
- 
+
         {/* Results */}
         {message.results && !message.loading && (
           <ResultsTable results={message.results} />
         )}
 
-        
         {/* Feedback */}
         {!message.loading && !message.error && message.sql && (
           <FeedbackButtons
@@ -72,14 +119,54 @@ export default function MessageBubble({ message }) {
     </div>
   )
 }
- 
+
+// ── Attachment link card ───────────────────────────────────────────────────────
+function AttachmentLink({ url, label }) {
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      style={att.card}
+      onMouseEnter={e => {
+        e.currentTarget.style.borderColor = 'var(--accent)'
+        e.currentTarget.style.background = 'var(--bg-1)'
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.borderColor = 'var(--border)'
+        e.currentTarget.style.background = 'var(--bg-2)'
+      }}
+    >
+      <Paperclip size={13} style={{ flexShrink: 0, color: 'var(--accent)' }} />
+      <span style={att.label}>{label}</span>
+      <span style={att.open}>Open ↗</span>
+    </a>
+  )
+}
+
+const att = {
+  card: {
+    display: 'flex', alignItems: 'center', gap: 8,
+    padding: '8px 12px', marginTop: 8,
+    background: 'var(--bg-2)', border: '1px solid var(--border)',
+    borderRadius: 'var(--radius)', textDecoration: 'none',
+    transition: 'border-color 0.15s, background 0.15s',
+    cursor: 'pointer',
+  },
+  label: {
+    flex: 1, fontSize: 13, color: 'var(--text-primary)',
+    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+  },
+  open: { fontSize: 11, color: 'var(--accent)', flexShrink: 0 },
+}
+
 const dotKeyframes = `
 @keyframes blink {
   0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); }
   40% { opacity: 1; transform: scale(1); }
 }
 `
- 
+
 // Inject keyframes once
 if (typeof document !== 'undefined' && !document.getElementById('dot-kf')) {
   const s = document.createElement('style')
@@ -87,26 +174,25 @@ if (typeof document !== 'undefined' && !document.getElementById('dot-kf')) {
   s.textContent = dotKeyframes
   document.head.appendChild(s)
 }
- 
+
 // ── ErrorBox: renders multi-line error messages with a tip line highlighted ──
 function ErrorBox({ error, sql }) {
   const [sqlOpen, setSqlOpen] = useState(false)
-  // Split on the tip marker (💡 or 🔧) so it gets its own styled line
   const parts = error.split(/\n\n/)
   const mainMessage = parts[0]
   const tipLine = parts.slice(1).join('\n\n').trim()
- 
+
   return (
     <div style={eb.box}>
       <div style={eb.header}>
         <AlertCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} />
         <span style={eb.main}>{mainMessage}</span>
       </div>
- 
+
       {tipLine && (
         <div style={eb.tip}>{tipLine}</div>
       )}
- 
+
       {/* Show the blocked SQL if present, so dev can see what was generated */}
       {sql && (
         <div style={{ marginTop: 8 }}>
@@ -119,7 +205,7 @@ function ErrorBox({ error, sql }) {
     </div>
   )
 }
- 
+
 const eb = {
   box: {
     background: 'var(--error-dim)', border: '1px solid rgba(252,129,129,0.25)',
@@ -145,7 +231,7 @@ const eb = {
     overflowX: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all',
   },
 }
- 
+
 const styles = {
   userRow: { display: 'flex', justifyContent: 'flex-end', marginBottom: 16 },
   userBubble: {
@@ -154,6 +240,7 @@ const styles = {
     borderRadius: '14px 14px 4px 14px', fontWeight: 500, fontSize: 13,
   },
   nlSummary: {
+    display: 'flex', flexDirection: 'column',
     marginBottom: 14,
     padding: '12px 14px',
     background: 'var(--bg-1)',
@@ -163,14 +250,6 @@ const styles = {
     color: 'var(--text-primary)',
     fontSize: 14,
     lineHeight: 1.7,
-  },
-  summaryLabel: {
-    fontSize: 11,
-    fontWeight: 700,
-    textTransform: 'uppercase',
-    letterSpacing: '0.08em',
-    color: 'var(--accent)',
-    marginBottom: 6,
   },
   assistantRow: { display: 'flex', justifyContent: 'flex-start', marginBottom: 16 },
   assistantBubble: {
