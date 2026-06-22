@@ -6,6 +6,13 @@ Intent normalization is applied to every incoming question before SQL generation
 so that synonym variations ("participants", "attendees", "sessions", etc.) are
 transparently resolved to the canonical vocabulary used in training data and
 documentation.
+
+RMS routing:
+  The "it_rms" instance uses a completely separate system prompt (built by
+  _build_rms_constraint) and a separate NL-summary domain-knowledge block,
+  because its schema/vocabulary has nothing to do with MeetingSphere. All
+  other plumbing (caching, get_vanna, train_ddl, schema_fetcher calls, etc.)
+  stays unified so existing admin/training routes don't need to change.
 """
 import os
 import re
@@ -17,28 +24,171 @@ from vanna.chromadb import ChromaDB_VectorStore
 
 from app.core.config import get_settings
 from app.db.connection_manager import get_connection, INSTANCE_CONN_STRINGS
-from app.services.intent_normalizer import normalize_with_llm_fallback
+from app.services.intent_normalizer import normalize_question
 
 settings = get_settings()
 
 _INTROSPECTION_MARKER = "allow_llm_to_see_data"
+_RMS_INSTANCE_KEY = "it_rms"
 
 # ─── Schema cache: instance_key → {table: [col, ...]} ────────────────────────
 _schema_cache: dict[str, dict[str, list[str]]] = {}
 _schema_lock = threading.Lock()
 
 
+# ─── Per-instance system prompt builders ─────────────────────────────────────
+
+def _build_meetingsphere_constraint(now_str: str, schema_block: str) -> str:
+    return (
+        f"CURRENT DATETIME: {now_str}\n\n"
+        "STRICT RULES — you MUST follow these before writing any SQL:\n"
+        "1. Only use tables and columns listed in the schema below. "
+        "Do NOT invent, guess, or abbreviate any table or column name.\n"
+
+        "2. Use NO_MATCH ONLY when the user asks for a concept whose data is stored "
+        "in NO column in the schema (e.g. 'salary' when no salary column exists). "
+        "NEVER return NO_MATCH just because a specific name, value, or keyword "
+        "mentioned by the user (e.g. '13AP Com', 'Finance Board', 'John') does not "
+        "appear in the schema — those are filter VALUES, not column names. "
+        "Filter values are supplied by the user at runtime and are never listed in "
+        "the schema. When the user mentions a name or value, use the appropriate "
+        "filtering strategy based on the column type.\n"
+
+        "3. Never use SELECT *. Always name columns explicitly.\n\n"
+
+        "4. Whenever searching for values in any case, use the SQL LIKE operator with wildcards.\n"
+        "Examples:\n"
+        "   MemberName LIKE '%John%'\n"
+        "   CommitteeName LIKE '%Finance%'\n"
+        "   Remarks LIKE '%meeting%'\n"
+        "   Time LIKE '%6:30 PM%'\n\n"
+        "   MeetingTitle LIKE '%11 June meeting with agenda items%'\n\n"
+
+        "5. For categorical or enumerated columns (e.g. Gender, Status, Type, "
+        "ActiveFlag, MaritalStatus, Yes/No fields, approval states, codes, or "
+        "other fixed-value fields), use exact matching (=) instead of LIKE unless "
+        "the user explicitly requests a partial search.\n"
+        "Examples:\n"
+        "   Gender = 'Male'\n"
+        "   Status = 'Active'\n"
+        "   ActiveFlag = 'Y'\n\n"
+
+        "IMPORTANT: Do NOT use LIKE for categorical values where one value may be "
+        "a substring of another. For example, use Gender = 'Male' instead of "
+        "Gender LIKE '%Male%' because it could also match 'Female'.\n\n"
+
+        "6. If the user asks for attachments, attached files, documents, file content, "
+        "downloadable files, ECM files, or any attachment-related information, you MUST "
+        "include BOTH of the following columns in the SELECT list in addition to any "
+        "other requested columns:\n"
+        "   MtAttachment_FileName\n"
+        "   MtAttachment_EcmFileId\n"
+        "Never omit these columns for attachment-related queries.\n\n"
+
+        "6b. NEVER include MtAttachment_FileContent in the SELECT list under any circumstances. "
+        "This column is excluded from all query results regardless of what the user asks. "
+        "Only include MtAttachment_FileName and MtAttachment_EcmFileId for attachment-related queries.\n\n"
+
+        "6c. MtAttachment_Source is a categorical column with EXACTLY these 4 allowed values:\n"
+        "   MeetingAgenda\n"
+        "   MoM\n"
+        "   MoM_Miscellaneous\n"
+        "   SharedDocument\n"
+        "When the user references an attachment source/type (e.g. 'agenda files', 'minutes', "
+        "'shared documents'), filter using exact matching (=) against this column, mapped to "
+        "the closest of the 4 values above. Never invent a source value outside this list, "
+        "and never use LIKE for this column since values may overlap as substrings.\n\n"
+
+        "7. RESPONSE STYLE: Be direct and minimal. "
+        "MUST notify the user in these two specific cases:\n"
+        "   a) No rows returned: say exactly 'No matching records found.'\n"
+        "   b) The requested data exists but the value is NULL or empty "
+        "(e.g. file content not extracted, field not populated): say exactly "
+        "'This information has not been populated yet.'\n\n"
+        "In all other cases, present results silently with no surrounding text.\n\n"
+
+        "8. CONTEXT HISTORY: Previous questions are provided for conversational "
+        "reference only (e.g. resolving 'it', 'that meeting', 'same person'). "
+        "NEVER reuse, copy, or adapt SQL from previous turns. "
+        "Always generate fresh SQL based solely on the current question and schema. "
+        "Do NOT inherit filter values, JOIN patterns, or WHERE conditions from prior SQL.\n\n"
+
+        "9. FILE EXTRACTION: If the user asks to extract text, read, view, open, "
+        "or get content from a file — regardless of phrasing — do NOT generate any SQL. "
+        "Instead, respond with exactly this and nothing else:\n"
+        "NO_MATCH: To view this file, please wait for the upcoming version with download feature :)\n\n"
+
+        f"AVAILABLE SCHEMA:\n{schema_block}\n"
+        "─────────────────────────────────────────\n"
+    )
+
+
+def _build_rms_constraint(now_str: str, schema_block: str) -> str:
+    """
+    Separate, RMS-specific system prompt. No MeetingSphere attachment/status
+    rules apply here — RMS has its own schema and vocabulary.
+    """
+    return (
+        f"CURRENT DATETIME: {now_str}\n\n"
+        "You are a SQL expert for the RMS (Record Management System) database.\n\n"
+
+        "STRICT RULES — you MUST follow these before writing any SQL:\n"
+        "1. Only use tables and columns listed in the schema below. "
+        "Do NOT invent, guess, or abbreviate any table or column name.\n"
+
+        "2. Use NO_MATCH ONLY when the user asks for a concept whose data is stored "
+        "in NO column in the schema. NEVER return NO_MATCH just because a specific "
+        "name, value, or keyword mentioned by the user does not appear in the schema "
+        "— those are filter VALUES, not column names, and are supplied at runtime.\n"
+
+        "3. Never use SELECT *. Always name columns explicitly.\n\n"
+
+        "4. Whenever searching for free-text values (names, titles, remarks, descriptions), "
+        "use the SQL LIKE operator with wildcards, e.g. RecordTitle LIKE '%contract%'.\n\n"
+
+        "5. For categorical or enumerated columns (Status, Type, ActiveFlag, Yes/No fields, "
+        "approval states, codes), use exact matching (=) instead of LIKE unless the user "
+        "explicitly requests a partial search.\n\n"
+
+        "IMPORTANT: Do NOT use LIKE for categorical values where one value may be a "
+        "substring of another.\n\n"
+
+        "6. RESPONSE STYLE: Be direct and minimal. "
+        "MUST notify the user in these two specific cases:\n"
+        "   a) No rows returned: say exactly 'No matching records found.'\n"
+        "   b) The requested data exists but the value is NULL or empty: say exactly "
+        "'This information has not been populated yet.'\n\n"
+        "In all other cases, present results silently with no surrounding text.\n\n"
+
+        "7. CONTEXT HISTORY: Previous questions are provided for conversational "
+        "reference only (e.g. resolving 'it', 'that record', 'same person'). "
+        "NEVER reuse, copy, or adapt SQL from previous turns. "
+        "Always generate fresh SQL based solely on the current question and schema.\n\n"
+
+        f"AVAILABLE SCHEMA:\n{schema_block}\n"
+        "─────────────────────────────────────────\n"
+    )
+
+
+def _build_constraint(instance_key: str, now_str: str, schema_block: str) -> str:
+    if instance_key == _RMS_INSTANCE_KEY:
+        return _build_rms_constraint(now_str, schema_block)
+    return _build_meetingsphere_constraint(now_str, schema_block)
+
+
 # ─── Custom Vanna class combining OpenAI + ChromaDB ──────────────────────────
 
 class OpenAIVanna(ChromaDB_VectorStore, OpenAI_Chat):
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, instance_key: str):
         ChromaDB_VectorStore.__init__(self, config=config)
         OpenAI_Chat.__init__(self, config=config)
+        self.instance_key = instance_key   # ← used to pick the right prompt
 
     def get_sql_prompt(self, question: str, question_sql_list, ddl_list, doc_list, **kwargs):
         """
         Override Vanna's default prompt builder to inject a strict
         schema-awareness constraint at the top of the system message.
+        The constraint content is selected based on self.instance_key.
         """
         prompt = super().get_sql_prompt(
             question=question,
@@ -52,78 +202,8 @@ class OpenAIVanna(ChromaDB_VectorStore, OpenAI_Chat):
         if schema_block:
             from datetime import datetime as _dt
             _now = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
-            constraint = (
-            f"CURRENT DATETIME: {_now}\n\n"
-            "STRICT RULES — you MUST follow these before writing any SQL:\n"
-            "1. Only use tables and columns listed in the schema below. "
-            "Do NOT invent, guess, or abbreviate any table or column name.\n"
+            constraint = _build_constraint(self.instance_key, _now, schema_block)
 
-            "2. Use NO_MATCH ONLY when the user asks for a concept whose data is stored "
-            "in NO column in the schema (e.g. 'salary' when no salary column exists). "
-            "NEVER return NO_MATCH just because a specific name, value, or keyword "
-            "mentioned by the user (e.g. '13AP Com', 'Finance Board', 'John') does not "
-            "appear in the schema — those are filter VALUES, not column names. "
-            "Filter values are supplied by the user at runtime and are never listed in "
-            "the schema. When the user mentions a name or value, use the appropriate "
-            "filtering strategy based on the column type.\n"
-
-            "3. Never use SELECT *. Always name columns explicitly.\n\n"
-
-            "4. Whenever searching for values in any case, use the SQL LIKE operator with wildcards.\n"
-            "Examples:\n"
-            "   MemberName LIKE '%John%'\n"
-            "   CommitteeName LIKE '%Finance%'\n"
-            "   Remarks LIKE '%meeting%'\n"
-            "   Time LIKE '%6:30 PM%'\n\n"
-            "   MeetingTitle LIKE '%11 June meeting with agenda items%'\n\n"
-
-            "5. For categorical or enumerated columns (e.g. Gender, Status, Type, "
-            "ActiveFlag, MaritalStatus, Yes/No fields, approval states, codes, or "
-            "other fixed-value fields), use exact matching (=) instead of LIKE unless "
-            "the user explicitly requests a partial search.\n"
-            "Examples:\n"
-            "   Gender = 'Male'\n"
-            "   Status = 'Active'\n"
-            "   ActiveFlag = 'Y'\n\n"
-
-            "IMPORTANT: Do NOT use LIKE for categorical values where one value may be "
-            "a substring of another. For example, use Gender = 'Male' instead of "
-            "Gender LIKE '%Male%' because it could also match 'Female'.\n\n"
-
-            "6. If the user asks for attachments, attached files, documents, file content, "
-            "downloadable files, ECM files, or any attachment-related information, you MUST "
-            "include BOTH of the following columns in the SELECT list in addition to any "
-            "other requested columns:\n"
-            "   MtAttachment_FileName\n"
-            "   MtAttachment_EcmFileId\n"
-            "Never omit these columns for attachment-related queries.\n\n"
-
-            "6b. NEVER include MtAttachment_FileContent in the SELECT list under any circumstances. "
-            "This column is excluded from all query results regardless of what the user asks. "
-            "Only include MtAttachment_FileName and MtAttachment_EcmFileId for attachment-related queries.\n\n"
-
-            "7. RESPONSE STYLE: Be direct and minimal. "
-            "MUST notify the user in these two specific cases:\n"
-            "   a) No rows returned: say exactly 'No matching records found.'\n"
-            "   b) The requested data exists but the value is NULL or empty "
-            "(e.g. file content not extracted, field not populated): say exactly "
-            "'This information has not been populated yet.'\n\n"
-            "In all other cases, present results silently with no surrounding text.\n\n"
-
-            "8. CONTEXT HISTORY: Previous questions are provided for conversational "
-            "reference only (e.g. resolving 'it', 'that meeting', 'same person'). "
-            "NEVER reuse, copy, or adapt SQL from previous turns. "
-            "Always generate fresh SQL based solely on the current question and schema. "
-            "Do NOT inherit filter values, JOIN patterns, or WHERE conditions from prior SQL.\n\n"
-
-            "9. FILE EXTRACTION: If the user asks to extract text, read, view, open, "
-            "or get content from a file — regardless of phrasing — do NOT generate any SQL. "
-            "Instead, respond with exactly this and nothing else:\n"
-            "NO_MATCH: To view this file, please wait for the upcoming version with download feature :)\n\n"
-
-            f"AVAILABLE SCHEMA:\n{schema_block}\n"
-            "─────────────────────────────────────────\n"
-        )
             # Prepend to the first system message
             if isinstance(prompt, list):
                 for msg in prompt:
@@ -146,13 +226,16 @@ def _make_vanna(instance_key: str) -> OpenAIVanna:
     persist_path = os.path.join(settings.chroma_persist_dir, instance_key)
     os.makedirs(persist_path, exist_ok=True)
 
-    vn = OpenAIVanna(config={
-        "api_key": settings.openai_api_key,
-        "model": "gpt-5.1",
-        "path": persist_path,
-        "collection_name": f"vanna_{instance_key}",
-        "allow_llm_to_see_data": True,
-    })
+    vn = OpenAIVanna(
+        config={
+            "api_key": settings.openai_api_key,
+            "model": "gpt-5.1",
+            "path": persist_path,
+            "collection_name": f"vanna_{instance_key}",   # already isolated per instance_key
+            "allow_llm_to_see_data": True,
+        },
+        instance_key=instance_key,
+    )
 
     conn_str = INSTANCE_CONN_STRINGS[instance_key]
     vn.connect_to_mssql(odbc_conn_str=conn_str)
@@ -173,7 +256,8 @@ def get_vanna(instance_key: str) -> OpenAIVanna:
 def _load_schema(instance_key: str) -> dict[str, list[str]]:
     """
     Query INFORMATION_SCHEMA to get all user tables and their columns.
-    Result is cached for the lifetime of the process.
+    Result is cached for the lifetime of the process, per instance_key —
+    so "it_rms" gets its own cache entry, fetched from the RMS connection.
     """
     if instance_key in _schema_cache:
         return _schema_cache[instance_key]
@@ -390,48 +474,10 @@ def _friendly_db_error(raw_error: str) -> str:
     )
 
 
-# ─── Natural-language summary ─────────────────────────────────────────────────
+# ─── Per-instance NL-summary domain knowledge ────────────────────────────────
 
-def generate_nl_summary(
-    question: str,
-    sql: Optional[str],
-    results: Optional[list[dict]],
-    error: Optional[str],
-    *,
-    api_key: str,
-    model: str = "gpt-4.1-mini",
-    language: str = "English",          # "English", "Urdu", "Hinglish"
-    max_sample_rows: int = 5,
-) -> str:
-    """
-    Ask the LLM to produce a plain-language summary of the query result
-    so non-technical users can understand what was returned.
-
-    The prompt is intentionally compact — we pass only a sample of the rows
-    to stay within token budget and avoid leaking large result sets.
-    """
-    import openai
-    from datetime import date
-
-    today_str = date.today().strftime("%B %d, %Y")
-
-    # ── Build a compact result snapshot ──────────────────────────────────────
-    if error:
-        result_snapshot = f"Query failed with error: {error}"
-    elif not results:
-        result_snapshot = "The query returned no rows."
-    else:
-        sample = results[:max_sample_rows]
-        total  = len(results)
-        rows_text = "\n".join(str(r) for r in sample)
-        tail = f"\n... ({total - max_sample_rows} more rows)" if total > max_sample_rows else ""
-        result_snapshot = f"Total rows returned: {total}\nSample data:\n{rows_text}{tail}"
-
-    system_prompt = (
-        f"You are a helpful assistant that explains database query results "
-        f"in simple, clear {language} to non-technical users. "
-        f"Today's date is {today_str}. "
-        "Focus only on what directly answers the user's question.\n\n"
+def _meetingsphere_domain_block() -> str:
+    return (
         "DOMAIN KNOWLEDGE:\n"
         "Meeting status is stored as an integer in the database. "
         "Always translate these LuMeetingSphereLookups_StatusCode values into human-readable labels in your response:\n"
@@ -469,6 +515,77 @@ def generate_nl_summary(
         "5. If data was found, confirm it in one plain sentence only, then list ATTACHMENT_LINK lines if applicable."
     )
 
+def _rms_domain_block() -> str:
+    """
+    RMS has no attachment/status-code conventions in common with MeetingSphere.
+    Extend this block as RMS-specific lookups/conventions are discovered.
+    """
+    return (
+        "STRICT RULES:\n"
+        "1. Never mention how many rows or records were returned.\n"
+        "2. Never explain technical limitations, system behavior, or what columns exist.\n"
+        "3. Never suggest additional steps or workarounds.\n"
+        "4. If data was found, confirm it in one plain sentence only.\n"
+        "5. If no data was found, say 'No matching records found.' only."
+    )
+
+
+def _domain_block(instance_key: str) -> str:
+    if instance_key == _RMS_INSTANCE_KEY:
+        return _rms_domain_block()
+    return _meetingsphere_domain_block()
+
+
+# ─── Natural-language summary ─────────────────────────────────────────────────
+
+def generate_nl_summary(
+    question: str,
+    sql: Optional[str],
+    results: Optional[list[dict]],
+    error: Optional[str],
+    *,
+    api_key: str,
+    instance_key: str = "it_meetingsphere",
+    model: str = "gpt-4.1-mini",
+    language: str = "English",          # "English", "Urdu", "Hinglish"
+    max_sample_rows: int = 5,
+) -> str:
+    """
+    Ask the LLM to produce a plain-language summary of the query result
+    so non-technical users can understand what was returned.
+
+    The domain-knowledge portion of the system prompt is selected based on
+    instance_key, so RMS summaries don't carry MeetingSphere-specific rules
+    (status codes, attachment links, etc.) that don't apply to its schema.
+
+    The prompt is intentionally compact — we pass only a sample of the rows
+    to stay within token budget and avoid leaking large result sets.
+    """
+    import openai
+    from datetime import date
+
+    today_str = date.today().strftime("%B %d, %Y")
+
+    # ── Build a compact result snapshot ──────────────────────────────────────
+    if error:
+        result_snapshot = f"Query failed with error: {error}"
+    elif not results:
+        result_snapshot = "The query returned no rows."
+    else:
+        sample = results[:max_sample_rows]
+        total  = len(results)
+        rows_text = "\n".join(str(r) for r in sample)
+        tail = f"\n... ({total - max_sample_rows} more rows)" if total > max_sample_rows else ""
+        result_snapshot = f"Total rows returned: {total}\nSample data:\n{rows_text}{tail}"
+
+    system_prompt = (
+        f"You are a helpful assistant that explains database query results "
+        f"in simple, clear {language} to non-technical users. "
+        f"Today's date is {today_str}. "
+        "Focus only on what directly answers the user's question.\n\n"
+        f"{_domain_block(instance_key)}"
+    )
+
     user_prompt = (
         f"A user asked: \"{question}\"\n\n"
         f"Here is the result:\n{result_snapshot}\n\n"
@@ -498,21 +615,45 @@ def run_query(instance_key: str, question: str, summary_question: Optional[str] 
     Normalize → Generate SQL → Validate → Execute.
 
     The normalization step maps user synonyms ("participants", "attendees",
-    "sessions", etc.) to the canonical vocabulary used in training data,
-    so Vanna's vector similarity search finds the right Q&A examples.
+    "sessions", etc.) to the canonical vocabulary used in MeetingSphere's
+    training data, so Vanna's vector similarity search finds the right Q&A
+    examples. This step only applies to instance_key == "it_meetingsphere";
+    every other instance (including "it_rms") uses the question unchanged,
+    since the normalizer's vocabulary is MeetingSphere-specific.
+
+    Works for every instance_key, including "it_rms" — get_vanna() and
+    _load_schema() already key off instance_key for connection, cache, and
+    ChromaDB collection, and get_sql_prompt() picks the RMS system prompt
+    automatically based on the Vanna instance's stored instance_key.
 
     Returns { sql, results, normalized_question, normalization_method, error }.
     """
     vn = get_vanna(instance_key)
 
     # ── Step 1: Normalize the question ────────────────────────────────────────
-    # Fast keyword substitution first; LLM rewrite only when nothing changed.
-    normalized_question, norm_method = normalize_with_llm_fallback(
-        question=question,
-        api_key=settings.openai_api_key,
-        model="gpt-4.1-mini",   # cheap model is fine for rewriting
-        always_rewrite=False,   # flip to True if you want LLM on every query
-    )
+    # The synonym/rewrite map in intent_normalizer is built for MeetingSphere
+    # vocabulary ("participants", "attendees", "sessions", etc.) and is not
+    # relevant — and was observed to corrupt unrelated text — for other
+    # instances. Skip normalization for everything except MeetingSphere.
+    if instance_key == "it_meetingsphere":
+        # Follow-up signal: the caller (query.py) builds `question` as the
+        # context-enriched version and passes the raw question separately as
+        # `summary_question`. If they differ, this turn needed prior context
+        # to resolve — i.e. it's a follow-up — so let the LLM rewrite it into
+        # a clean, standalone, domain-canonical question. If they're the same
+        # (or no summary_question was given), it's a standalone query and we
+        # skip the LLM call entirely.
+        is_followup = bool(summary_question) and (
+            question.strip().lower() != summary_question.strip().lower()
+        )
+        normalized_question, norm_method = normalize_question(
+            question=question,
+            api_key=settings.openai_api_key,
+            is_followup=is_followup,
+            model="gpt-4.1-mini",   # cheap model is fine for rewriting
+        )
+    else:
+        normalized_question, norm_method = question, "skipped_not_meetingsphere"
 
     # Load and format the real schema for this instance
     schema = _load_schema(instance_key)
@@ -614,6 +755,7 @@ def run_query(instance_key: str, question: str, summary_question: Optional[str] 
             results=results,
             error=None,
             api_key=settings.openai_api_key,
+            instance_key=instance_key,
         )
 
         return {
@@ -645,6 +787,9 @@ def run_query(instance_key: str, question: str, summary_question: Optional[str] 
 
 
 # ─── Training helpers ─────────────────────────────────────────────────────────
+# These already work for "it_rms" unchanged: get_vanna("it_rms") connects via
+# INSTANCE_CONN_STRINGS["it_rms"] (settings.rms_connection_string), and writes
+# into the isolated "vanna_it_rms" ChromaDB collection.
 
 def debug_vanna(instance_key: str, question: str):
     vn = get_vanna(instance_key)

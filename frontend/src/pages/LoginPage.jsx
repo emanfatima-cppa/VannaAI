@@ -32,7 +32,7 @@ export default function LoginPage() {
       <div style={styles.card}>
         <div style={styles.logo}>
           <span style={styles.logoMark}>▲</span>
-          <span style={styles.logoText}>VANNA<span style={styles.logoAccent}>.AI</span></span>
+          <span style={styles.logoText}>CORTEXA<span style={styles.logoAccent}>.AI</span></span>
         </div>
         <p style={styles.subtitle}>Natural language queries across your databases</p>
 

@@ -41,9 +41,25 @@ async def ask(req: QueryRequest, current_user: dict = Depends(get_current_user))
         summary_question=req.question,  # clean question for NL summary
     )
 
-    # Summarise for context memory
+    # Summarise for context memory.
+    # IMPORTANT: this needs enough concrete detail (actual identifiers/titles
+    # from the rows) for a later follow-up like "and its agenda?" to resolve
+    # against specific entities — a bare row count gives the rewriter
+    # nothing to anchor "it"/"its" to, and it'll fall back to whatever is
+    # semantically nearest in training data instead of the right meeting.
     if result["results"]:
-        summary = f"{len(result['results'])} row(s) returned"
+        preview_rows = result["results"][:5]
+        row_previews = [
+            ", ".join(f"{k}={v}" for k, v in row.items())
+            for row in preview_rows
+        ]
+        preview_text = "; ".join(row_previews)
+        if len(preview_text) > 800:
+            preview_text = preview_text[:800] + "..."
+        remaining = len(result["results"]) - len(preview_rows)
+        if remaining > 0:
+            preview_text += f"; ... ({remaining} more row(s))"
+        summary = f"{len(result['results'])} row(s) returned: {preview_text}"
     elif result["error"]:
         summary = f"Error: {result['error']}"
     else:

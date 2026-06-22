@@ -124,10 +124,23 @@ DUMMY_TRAINING: dict[str, dict] = {
             • MtAttachment_FileName      – file name
             • MtAttachment_FileExtension – file extension
             • MtAttachment_EcmFileId     – ECM / document management ID
-            • MtAttachment_Source        – type of parent record (e.g. 'MeetingAgenda', 'SharedDocument')
+            • MtAttachment_Source        – type of parent record (e.g. 'MeetingAgenda', 'MoM' , 'SharedDocument', 'MoM_Miscellaneous')
             • MtAttachment_SourceId      – ID of the parent record
             • MtAttachment_IsDeleted     – soft-delete (filter = 0)
             Link attachments using MtAttachment_Source and MtAttachment_SourceId.
+
+            IMPORTANT:
+            • Meeting attachments are linked DIRECTLY to MtMeetingHeader.
+            • Use MtAttachment_SourceId = MtMeetingHeader_Id when retrieving attachments of a meeting.
+            • Do NOT assume meeting attachments are linked through MtMeetingAgenda.
+            • For queries such as:
+            - "show meeting attachments"
+            - "attachments of the latest meeting"
+            - "attachments of the second last meeting"
+            - "files attached to meeting X"
+            join MtAttachment directly with MtMeetingHeader using:
+                MtAttachment_SourceId = MtMeetingHeader_Id
+            and MtAttachment_IsDeleted = 0.
 
             Shared documents (also: shared files, common documents, public documents) are
             stored in MtSharedDocumentsHeader.  To get shared documents WITH file names:
@@ -428,6 +441,33 @@ DUMMY_TRAINING: dict[str, dict] = {
                     AND cu.MtCommitteeUsers_Isdeleted = 0
                     AND cu.RuRoles_Code LIKE '%member%'
                     AND (u.RuUsers_FirstName LIKE '%Eman%' OR u.RuUsers_LastName LIKE '%Eman%');
+                """
+            },
+            {
+                "question": "Are there any attachments linked with the meetings held on 2026-06-13 titled 'asd' and '11 june meeting with agenda items'?",
+                "sql": """
+                    SELECT 
+                        m.MtMeetingHeader_Id,
+                        m.MtMeetingHeader_Title,
+                        m.MtMeetingHeader_MeetingDate,
+                        att.MtAttachment_Id,
+                        att.MtAttachment_Source,
+                        att.MtAttachment_SourceId,
+                        att.MtAttachment_FileName,
+                        att.MtAttachment_FileExtension,
+                        att.MtAttachment_EcmFileId,
+                        att.MtAttachment_FileSizeBytes,
+                        att.MtAttachment_CreatedOn
+                    FROM MtMeetingHeader AS m
+                    LEFT JOIN MtAttachment AS att
+                        ON att.MtAttachment_SourceId = m.MtMeetingHeader_Id
+                    AND att.MtAttachment_IsDeleted = 0
+                    WHERE m.MtMeetingHeader_Isdeleted = 0
+                    AND m.MtMeetingHeader_MeetingDate = '2026-06-13'
+                    AND (
+                            m.MtMeetingHeader_Title LIKE '%asd%'
+                            OR m.MtMeetingHeader_Title LIKE '%11 june meeting with agenda items%'
+                        );
                 """
             },
             {
