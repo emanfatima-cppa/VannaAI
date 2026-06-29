@@ -634,3 +634,177 @@ DUMMY_TRAINING: dict[str, dict] = {
     },
 
 }
+"""app/training/dummy_data.py – placeholder Q&A pairs and documentation per instance."""
+
+DUMMY_TRAINING: dict[str, dict] = {
+
+    # ========================= MEETING SPHERE =========================
+    "it_meetingsphere": {
+        "documentation": [
+            """
+            This is a Meeting Management System (MeetingSphere).
+            Core entities:
+            Committees, Meetings, Users, Agendas, MOM, Attachments.
+            """
+        ],
+        "qa_pairs": [
+            {
+                "question": "list all users",
+                "sql": "SELECT * FROM RuUsers WHERE RuUsers_IsDeleted = 0"
+            }
+        ],
+    },
+
+    # ========================= CDXP =========================
+    "it_cdxp": {
+        "documentation": [
+
+            # CORE
+            """
+            This is CDXP (Invoice Management System).
+
+            Flow:
+            Supplier → Invoice (Diary) → Blocks → Components → Attachments
+            """,
+
+            # SUPPLIERS
+            """
+            Suppliers (vendor, ipp, company) are stored in:
+
+            • CPPA_CA.AP_SUPPLIERS
+            • CPPA_CA.APP_SUPPLIER_SITE_ALL
+
+            Columns:
+            VENDOR_ID, VENDOR_NAME, VENDOR_SITE_ID
+
+            Synonyms:
+            supplier, vendor, ipp, company
+            """,
+
+            # DIARY HEADER
+            """
+            Table: CPPA_CA.DIARY_HEADER_INTERFACE
+
+            Columns:
+            DIARY_HEADER_ID, PPA_HEADER_ID, INVOICE_TYPE_ID, VEN_INV_LETTER_NO,
+            VEN_INV_LETTER_DATE, INVOICE_PERIOD_FROM, INVOICE_PERIOD_TO, CURRENCY,
+            TOTAL_CLAIM, SUBMIT_DATE, APPROVED_STATUS, INV_DUE_DATE, REMARKS,
+            ORGANIZATION_ID, GST_PER, VERIFIED_AMOUNT, ADJ_AMOUNT_SUM,
+            INTERFACE_STATUS, CREATION_DATE, CREATED_BY, LAST_UPDATE_DATE,
+            LAST_UPDATE_LOGIN, ERP_TRANSFER_CHECK, PORTAL_TRANSFER_CHECK,
+            INTERFACE_TRANSFER_CHECK, PARENT_INVOICE_NO, IS_DIFFERENTIAL,
+            ERP_TABLE_ID, INITIAL_VERIFICATION_CPPA, DIARY_EDITABLE,
+            IS_APPROVED_BY_FINANCE, IS_APPROVED_BY_TECHNICAL, TransactionNumber,
+            SubmittionRemarks, INVOICE_TYPES, TECHNICAL_UPDATE_DATE,
+            FINANCE_UPDATE_DATE, VENDOR_SITE_ID, VENDOR_ID, ORG_ID,
+            HARD_COPY_SUBMISSION_DATETIME, HARD_COPY_SUBMISSION_TYPE,
+            FORM_NAME, Error_Email_sent, Signatory_ID
+            """,
+
+            # BLOCKS
+            """
+            Table: CPPA_CA.BLOCKS_HEADER_INTERFACE
+
+            Columns:
+            BLOCK_HEADER_ID, DIARY_HEADER_ID, PPA_BLOCK_HEADER_ID,
+            RATE_VALID_FROM, RATE_VALID_TO, CLAIM_TOTAL, ADVANCE_PAID,
+            REMAINING_CURRENT_MONTH, ADVANCE_NEXT_MONTH,
+            PAYABLE_CURRENT_MONTH, VERIFIED_AMOUNT, REMARKS,
+            CREATION_DATE, CREATED_BY, LAST_UPDATE_DATE,
+            LAST_UPDATE_BY, LAST_UPDATE_LOGIN, ERP_TRANSFER_CHECK,
+            PORTAL_TRANSFER_CHECK, INTERFACE_TRANSFER_CHECK,
+            PPA_COMP_TYP_HEADER_ID, PPA_FUEL_TYP_HEADER_ID,
+            bisRequired, DIFF_PAR_ID_FK
+
+            Synonyms:
+            block, fuel block
+            """,
+
+            # COMPONENTS
+            """
+            Table: CPPA_CA.COMP_HEADER_INTERFACE
+
+            Columns:
+            COM_HEADER_ID, BLOCK_HEADER_ID, COM_DEF_ID_FK, COMP_NAME,
+            COMP_VALUE, VARIFIED_AMOUNT, REMARKS, GST_PER,
+            CREATION_DATE, CREATED_BY, LAST_UPDATE_DATE,
+            LAST_UPDATED_BY, LAST_UPDATE_LOGIN, ERP_TRANSFER_CHECK,
+            PORTAL_TRANSFER_CHECK, INTERFACE_TRANSFER_CHECK,
+            IS_INCLUDE_IN_TOTAL, IS_MANDATORY
+
+            Synonyms:
+            component, fuel component, price
+            """,
+
+            # ATTACHMENTS
+            """
+            Tables:
+            • CPPA_CA.ATTACHMENT_HEADER
+            • dbo.DISPUTE_ATTACHMENTS
+
+            Synonyms:
+            attachment, file, document
+            """,
+
+            # RELATIONSHIPS
+            """
+            Relationships:
+
+            Supplier → DIARY_HEADER_INTERFACE (VENDOR_ID)
+            DIARY → BLOCKS (DIARY_HEADER_ID)
+            BLOCKS → COMPONENTS (BLOCK_HEADER_ID)
+
+            IMPORTANT:
+            Always go DIARY → BLOCK → COMPONENT
+            Never join COMPONENT directly with DIARY
+            """,
+
+            # RULES
+            """
+            Rules:
+
+            • Use VERIFIED_AMOUNT for verified queries
+            • Use TOTAL_CLAIM for claim queries
+            • Latest invoice → ORDER BY SUBMIT_DATE DESC
+            • Use proper joins only
+            """
+        ],
+
+        "qa_pairs": [
+            {
+                "question": "show invoices of a vendor",
+                "sql": """
+                    SELECT DIARY_HEADER_ID, VENDOR_ID, TOTAL_CLAIM, VERIFIED_AMOUNT, SUBMIT_DATE
+                    FROM CPPA_CA.DIARY_HEADER_INTERFACE
+                    WHERE VENDOR_ID = 101
+                """
+            },
+            {
+                "question": "list blocks of an invoice",
+                "sql": """
+                    SELECT BLOCK_HEADER_ID, DIARY_HEADER_ID, CLAIM_TOTAL, VERIFIED_AMOUNT
+                    FROM CPPA_CA.BLOCKS_HEADER_INTERFACE
+                    WHERE DIARY_HEADER_ID = 1001
+                """
+            },
+            {
+                "question": "show components of block",
+                "sql": """
+                    SELECT COM_HEADER_ID, COMP_NAME, COMP_VALUE, VARIFIED_AMOUNT
+                    FROM CPPA_CA.COMP_HEADER_INTERFACE
+                    WHERE BLOCK_HEADER_ID = 5001
+                """
+            },
+            {
+                "question": "latest invoice",
+                "sql": """
+                    SELECT TOP 1 *
+                    FROM CPPA_CA.DIARY_HEADER_INTERFACE
+                    ORDER BY SUBMIT_DATE DESC
+                """
+            }
+        ],
+    },
+
+}
+

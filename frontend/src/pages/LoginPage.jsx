@@ -16,7 +16,7 @@ export default function LoginPage() {
     e.preventDefault()
     setLoading(true)
     try {
-      const data = await login(username, password)
+      const data = await login(username, password)       //calls api.js login function to send credentials to backend and receive access token and user info
       setAuth({ username: data.username, roles: data.roles }, data.access_token)
       toast.success(`Welcome, ${data.username}`)
       navigate('/chat')
