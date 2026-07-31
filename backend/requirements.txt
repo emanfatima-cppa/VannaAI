@@ -4,6 +4,7 @@ python-dotenv
 python-jose[cryptography]
 passlib[bcrypt]
 python-multipart
+pywin32
 
 # Vanna AI + Claude
 vanna[chromadb]
@@ -12,6 +13,7 @@ anthropic
 # Database drivers
 pyodbc
 sqlalchemy
+oracledb
 
 # HTTP & async
 httpx

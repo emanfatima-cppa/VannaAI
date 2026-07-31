@@ -109,3 +109,9 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+::placeholder {
+  color: #9ca3af !important;
+  opacity: 1 !important;
+}
+

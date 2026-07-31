@@ -15,7 +15,7 @@ VALID_ROLES = [
 ROLE_DESCRIPTIONS = {
     "hr_admin":  "Full access to all HR instances (policies + salaries)",
     "hr_viewer": "Read-only access to HR policies instance",
-    "it_admin":  "Full access to all IT instances (MeetingSphere + CDXP)",
+    "it_admin":  "Full access to all IT instances (Meeting Sphere + CDXP)",
     "it_viewer": "Read-only access to IT instances",
 }
 

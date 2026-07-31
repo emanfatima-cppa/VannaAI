@@ -1,13 +1,13 @@
 // src/components/layout/Sidebar.jsx
 import { useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Database, MessageSquare, Settings, LogOut, RefreshCw } from 'lucide-react'
+import { Database, MessageSquare, History, Settings, LogOut, RefreshCw, Sun, Moon } from 'lucide-react'
 import useStore from '../../store/useStore'
-import { fetchInstances } from '../../services/api'
+import { fetchInstances, logoutUser } from '../../services/api'
 import toast from 'react-hot-toast'
 
 export default function Sidebar() {
-  const { user, logout, instances, setInstances, activeInstance, setActiveInstance } = useStore()
+  const { user, logout, instances, setInstances, activeInstance, setActiveInstance, theme, toggleTheme } = useStore()
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -17,7 +17,11 @@ export default function Sidebar() {
       .catch(() => toast.error('Could not load instances'))
   }, [])
 
-  const handleLogout = () => { logout(); navigate('/') }
+  const handleLogout = async () => {
+    try { await logoutUser() } catch (e) {}
+    logout()
+    navigate('/')
+  }
 
   const grouped = instances.reduce((acc, inst) => {
     if (!acc[inst.group]) acc[inst.group] = []
@@ -25,7 +29,7 @@ export default function Sidebar() {
     return acc
   }, {})
 
-  const isAdmin = user?.roles?.some((r) => r.endsWith('_admin'))
+  const isAdmin = user?.roles?.includes('it_admin')
 
   return (
     <aside style={styles.sidebar}>
@@ -49,6 +53,7 @@ export default function Sidebar() {
       {/* Nav */}
       <nav style={styles.nav}>
         <NavItem icon={<MessageSquare size={15} />} label="Chat" active={location.pathname === '/chat'} onClick={() => navigate('/chat')} />
+        <NavItem icon={<History size={15} />} label="Query History" active={location.pathname === '/history'} onClick={() => navigate('/history')} />
         {isAdmin && (
           <NavItem icon={<Settings size={15} />} label="Admin / Training" active={location.pathname === '/admin'} onClick={() => navigate('/admin')} />
         )}
@@ -82,6 +87,21 @@ export default function Sidebar() {
       </div>
 
       <div style={{ flex: 1 }} />
+
+      {/* Theme Toggle */}
+      <button style={styles.themeToggleBtn} onClick={toggleTheme}>
+        {theme === 'dark' ? <Sun size={14} style={{ color: 'var(--warning)' }} /> : <Moon size={14} style={{ color: 'var(--accent)' }} />}
+        <span style={{ flex: 1 }}>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
+        <div style={{
+          ...styles.toggleTrack,
+          background: theme === 'dark' ? 'var(--bg-3)' : 'var(--accent)',
+        }}>
+          <div style={{
+            ...styles.toggleThumb,
+            transform: theme === 'dark' ? 'translateX(0)' : 'translateX(14px)',
+          }} />
+        </div>
+      </button>
 
       {/* Logout */}
       <button style={styles.logoutBtn} onClick={handleLogout}>
@@ -118,10 +138,10 @@ const styles = {
   },
   avatar: {
     width: 28, height: 28, borderRadius: '50%', background: 'var(--accent)',
-    color: '#0a0c10', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center',
     fontWeight: 700, fontSize: 13,
   },
-  userName: { fontSize: 13, fontWeight: 600 },
+  userName: { fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' },
   userRoles: { fontSize: 11, color: 'var(--text-muted)' },
   divider: { height: 1, background: 'var(--border)', margin: '12px 0' },
   nav: { display: 'flex', flexDirection: 'column', gap: 2 },
@@ -155,11 +175,26 @@ const styles = {
     width: 6, height: 6, borderRadius: '50%',
     background: 'var(--success)', flexShrink: 0,
   },
+  themeToggleBtn: {
+    display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+    padding: '8px 10px', borderRadius: 'var(--radius)',
+    background: 'var(--bg-2)', border: '1px solid var(--border)',
+    color: 'var(--text-primary)', fontSize: 12, fontWeight: 500, textAlign: 'left',
+    marginBottom: 4, transition: 'all 0.2s ease', cursor: 'pointer',
+  },
+  toggleTrack: {
+    width: 32, height: 18, borderRadius: 10, padding: 2,
+    display: 'flex', alignItems: 'center', transition: 'background 0.2s',
+  },
+  toggleThumb: {
+    width: 14, height: 14, borderRadius: '50%', background: '#ffffff',
+    transition: 'transform 0.2s ease', boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+  },
   logoutBtn: {
     display: 'flex', alignItems: 'center', gap: 8,
     padding: '8px 12px', borderRadius: 'var(--radius)',
-    background: 'transparent', border: 'none',
-    color: 'var(--text-muted)', fontSize: 13,
-    transition: 'color 0.15s',
+    background: 'var(--bg-2)', border: '1px solid var(--border)',
+    color: 'var(--text-primary)', fontSize: 13, fontWeight: 600,
+    cursor: 'pointer', transition: 'all 0.15s ease',
   },
 }

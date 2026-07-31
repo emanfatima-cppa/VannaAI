@@ -23,6 +23,7 @@ const useStore = create((set, get) => ({
   // ── Chat messages ─────────────────────────────────────────────────────────
   // messages: [{ id, role: 'user'|'assistant', question, sql, results, error, loading }]
   messages: [],
+  setMessages: (messages) => set({ messages }),
   sessionId: `session_${Date.now()}`,
 
   addUserMessage: (id, question) => {
@@ -56,6 +57,27 @@ const useStore = create((set, get) => ({
   // ── Loading ───────────────────────────────────────────────────────────────
   isLoading: false,
   setLoading: (v) => set({ isLoading: v }),
+
+  // ── Theme ──────────────────────────────────────────────────────────────────
+  theme: (() => {
+    const saved = localStorage.getItem('theme') || 'dark'
+    if (typeof document !== 'undefined') {
+      document.documentElement.setAttribute('data-theme', saved)
+    }
+    return saved
+  })(),
+  setTheme: (theme) => {
+    localStorage.setItem('theme', theme)
+    if (typeof document !== 'undefined') {
+      document.documentElement.setAttribute('data-theme', theme)
+    }
+    set({ theme })
+  },
+  toggleTheme: () => {
+    const currentTheme = get().theme
+    const nextTheme = currentTheme === 'dark' ? 'light' : 'dark'
+    get().setTheme(nextTheme)
+  },
 
   // ── Admin panel ───────────────────────────────────────────────────────────
   adminTab: 'training',

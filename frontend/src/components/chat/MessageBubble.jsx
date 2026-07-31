@@ -1,6 +1,6 @@
 // src/components/chat/MessageBubble.jsx
 import { useState } from 'react'
-import { ChevronDown, ChevronRight, Code2, AlertCircle, Paperclip } from 'lucide-react'
+import { ChevronDown, ChevronRight, Code2, AlertCircle, Paperclip, Sparkles } from 'lucide-react'
 import ResultsTable from './ResultsTable'
 import FeedbackButtons from '../feedback/FeedbackButtons'
 
@@ -66,12 +66,18 @@ export default function MessageBubble({ message }) {
         {/* Error state */}
         {message.error && <ErrorBox error={message.error} sql={message.sql} />}
 
-        {/* Loading */}
+        {/* Loading / Typing Animation */}
         {message.loading && (
-          <div style={styles.loading}>
-            <span style={styles.dot} />
-            <span style={styles.dot} />
-            <span style={styles.dot} />
+          <div style={styles.typingContainer}>
+            <div style={styles.typingHeader}>
+              <Sparkles size={15} style={{ color: 'var(--accent)', animation: 'blink 1.5s ease-in-out infinite' }} />
+              <span style={styles.typingText}>CORTEXA.AI is thinking & querying database...</span>
+            </div>
+            <div style={styles.loadingDots}>
+              <span style={{ ...styles.dot, animationDelay: '0s' }} />
+              <span style={{ ...styles.dot, animationDelay: '0.2s' }} />
+              <span style={{ ...styles.dot, animationDelay: '0.4s' }} />
+            </div>
           </div>
         )}
 
@@ -235,9 +241,12 @@ const eb = {
 const styles = {
   userRow: { display: 'flex', justifyContent: 'flex-end', marginBottom: 16 },
   userBubble: {
-    maxWidth: '70%', padding: '10px 16px',
-    background: 'var(--accent)', color: '#0a0c10',
-    borderRadius: '14px 14px 4px 14px', fontWeight: 500, fontSize: 13,
+    maxWidth: '75%', padding: '12px 18px',
+    background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+    color: '#ffffff',
+    borderRadius: '16px 16px 4px 16px', fontWeight: 500, fontSize: 14,
+    lineHeight: 1.5,
+    boxShadow: '0 2px 8px rgba(79, 70, 229, 0.25)',
   },
   nlSummary: {
     display: 'flex', flexDirection: 'column',
@@ -257,11 +266,15 @@ const styles = {
     background: 'var(--bg-2)', border: '1px solid var(--border)',
     borderRadius: '4px 14px 14px 14px',
   },
-  loading: { display: 'flex', gap: 5, padding: '4px 0' },
+  typingContainer: { display: 'flex', flexDirection: 'column', gap: 6, padding: '4px 0' },
+  typingHeader: { display: 'flex', alignItems: 'center', gap: 8 },
+  typingIcon: { fontSize: 14, animation: 'blink 1.5s ease-in-out infinite' },
+  typingText: { fontSize: 13, color: 'var(--text-secondary)', fontWeight: 500 },
+  loadingDots: { display: 'flex', gap: 6, paddingLeft: 22 },
   dot: {
     display: 'inline-block', width: 7, height: 7, borderRadius: '50%',
-    background: 'var(--text-muted)',
-    animation: 'blink 1.2s infinite',
+    background: 'var(--accent)',
+    animation: 'blink 1.2s infinite ease-in-out',
   },
   sqlToggle: {
     display: 'flex', alignItems: 'center', gap: 6,

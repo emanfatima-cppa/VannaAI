@@ -19,7 +19,41 @@ export const login = async (username, password) => {
   return data
 }
 
+export const loginWindows = async (username, password, domain = '.') => {
+  const { data } = await api.post('/auth/windows-login', { username, password, domain })
+  return data
+}
+
 export const fetchMe = () => api.get('/auth/me').then(r => r.data)
+export const logoutUser = () => api.post('/auth/logout').then(r => r.data)
+
+/**
+ * attemptSSO — silently tries Windows Negotiate (Kerberos/NTLM) SSO.
+ * 
+ * How it works:
+ * - Calls GET /api/auth/sso using fetch (NOT axios) with credentials:'include'
+ *   so the browser can attach its Windows Kerberos/NTLM token automatically.
+ * - On Trusted Sites / Local Intranet: browser sends the token → SSO succeeds → returns JWT user data
+ * - On local dev / non-Trusted Site: browser won't send token → returns null → manual popup shown
+ */
+export const attemptSSO = async () => {
+  try {
+    // Use native fetch with credentials so browser attaches Negotiate token automatically
+    const baseUrl = api.defaults.baseURL.replace('/api', '')
+    const res = await fetch(`${baseUrl}/api/auth/sso`, {
+      method: 'GET',
+      credentials: 'include',  // ← this lets browser send Kerberos/NTLM token
+    })
+    if (res.ok) {
+      const data = await res.json()
+      return data  // { access_token, username, roles, sso: true }
+    }
+    return null  // 401 = not on Trusted Site, fall back to manual popup
+  } catch {
+    return null  // Network error or SSO not available
+  }
+}
+
 
 // ── Instances ─────────────────────────────────────────────────────────────────
 export const fetchInstances = () => api.get('/query/instances').then(r => r.data)
@@ -33,6 +67,13 @@ export const fetchHistory = (instance_key, session_id = 'default') =>
 
 export const clearHistory = (instance_key, session_id = 'default') =>
   api.delete('/query/history', { params: { instance_key, session_id } }).then(r => r.data)
+
+export const fetchUserHistory = (instance_key = null, limit = 100) =>
+  api.get('/query/user-history', { params: { instance_key, limit } }).then(r => r.data)
+
+export const clearUserHistory = (instance_key = null) =>
+  api.delete('/query/user-history', { params: { instance_key } }).then(r => r.data)
+
 
 // ── Feedback ──────────────────────────────────────────────────────────────────
 export const submitFeedback = (instance_key, question, sql, thumbs_up, comment = '') =>
@@ -53,5 +94,15 @@ export const deleteTrainingRecord = (instance_key, training_id) =>
 
 export const fetchFeedbackStats = (instance_key) =>
   api.get(`/training/feedback/stats/${instance_key}`).then(r => r.data)
+
+// ── Share Chat ────────────────────────────────────────────────────────────────
+export const createShareLink = (instance_key, messages, title = null) =>
+  api.post('/share/create', { instance_key, messages, title }).then(r => r.data)
+
+export const fetchSharedChat = (shareId) =>
+  api.get(`/share/${shareId}`).then(r => r.data)
+
+export const forkSharedChat = (shareId) =>
+  api.post('/share/fork', { share_id: shareId }).then(r => r.data)
 
 export default api

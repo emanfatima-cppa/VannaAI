@@ -6,6 +6,12 @@ from app.models.query import QueryRequest, QueryResponse, FeedbackRequest
 from app.services import vanna_service, context_service, feedback_service
 from app.db.connection_manager import get_all_instances, INSTANCE_META
 
+from app.db.auth_db import (
+    record_query_history,
+    get_user_query_history,
+    clear_user_query_history,
+)
+
 router = APIRouter(prefix="/api/query", tags=["query"])
 
 
@@ -42,11 +48,6 @@ async def ask(req: QueryRequest, current_user: dict = Depends(get_current_user))
     )
 
     # Summarise for context memory.
-    # IMPORTANT: this needs enough concrete detail (actual identifiers/titles
-    # from the rows) for a later follow-up like "and its agenda?" to resolve
-    # against specific entities — a bare row count gives the rewriter
-    # nothing to anchor "it"/"its" to, and it'll fall back to whatever is
-    # semantically nearest in training data instead of the right meeting.
     if result["results"]:
         preview_rows = result["results"][:5]
         row_previews = [
@@ -70,6 +71,18 @@ async def ask(req: QueryRequest, current_user: dict = Depends(get_current_user))
         req.question, result.get("sql"), summary
     )
 
+    # Save query history in PostgreSQL table (user_query_history)
+    status = "error" if result.get("error") else "success"
+    record_query_history(
+        username=current_user["username"],
+        instance_key=req.instance_key,
+        question=req.question,
+        sql=result.get("sql"),
+        status=status,
+        error=result.get("error"),
+        nl_summary=result.get("nl_summary"),
+    )
+
     return QueryResponse(
         instance_key=req.instance_key,
         question=req.question,
@@ -77,7 +90,7 @@ async def ask(req: QueryRequest, current_user: dict = Depends(get_current_user))
         results=result.get("results"),
         error=result.get("error"),
         session_id=req.session_id,
-        nl_summary=result.get("nl_summary"),   # ← new
+        nl_summary=result.get("nl_summary"),
     )
 
 
@@ -102,6 +115,33 @@ async def clear_history(
     check_instance_access(instance_key, current_user)
     context_service.clear_context(current_user["username"], instance_key, session_id)
     return {"cleared": True}
+
+
+@router.get("/user-history")
+async def fetch_db_user_history(
+    instance_key: str = None,
+    limit: int = 100,
+    current_user: dict = Depends(get_current_user),
+):
+    """Fetch persistent query history for the logged-in user from PostgreSQL."""
+    return get_user_query_history(
+        username=current_user["username"],
+        limit=limit,
+        instance_key=instance_key,
+    )
+
+
+@router.delete("/user-history")
+async def clear_db_user_history(
+    instance_key: str = None,
+    current_user: dict = Depends(get_current_user),
+):
+    """Clear persistent query history for the logged-in user in PostgreSQL."""
+    success = clear_user_query_history(
+        username=current_user["username"],
+        instance_key=instance_key,
+    )
+    return {"cleared": success}
 
 
 @router.post("/feedback")

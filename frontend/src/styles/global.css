@@ -1,7 +1,7 @@
 /* src/styles/global.css */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-:root {
+:root, [data-theme="dark"] {
   --bg-0: #0a0c10;
   --bg-1: #12151d;
   --bg-2: #1a1f2e;
@@ -30,6 +30,32 @@
   --radius: 8px;
   --radius-lg: 14px;
   --shadow: 0 4px 24px rgba(0,0,0,0.4);
+}
+
+[data-theme="light"] {
+  --bg-0: #f8fafc;
+  --bg-1: #ffffff;
+  --bg-2: #edf2f7;
+  --bg-3: #e2e8f0;
+
+  --border: #e2e8f0;
+  --border-accent: rgba(37,99,235,0.3);
+
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+
+  --accent: #2563eb;
+  --accent-dim: rgba(37,99,235,0.12);
+  --accent-glow: rgba(37,99,235,0.25);
+
+  --success: #16a34a;
+  --success-dim: rgba(22,163,74,0.12);
+  --error: #dc2626;
+  --error-dim: rgba(220,38,38,0.12);
+  --warning: #d97706;
+
+  --shadow: 0 4px 20px rgba(0,0,0,0.06);
 }
 
 html, body, #root {

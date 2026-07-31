@@ -7,7 +7,8 @@ INSTANCE_ROLES: dict[str, list[str]] = {
     "hr_salaries":       ["hr_admin"],
     "it_meetingsphere":  ["it_admin", "it_viewer"],
     "it_cdxp":            ["it_admin", "it_viewer"],
-    "it_rms": ["it_admin", "it_viewer"],
+    "it_rms":             ["it_admin", "it_viewer"],
+    "it_pop":             ["it_admin", "it_viewer"],
 }
 
 
@@ -26,6 +27,9 @@ def check_instance_access(instance_key: str, user: dict) -> None:
 
 
 def require_admin(user: dict) -> None:
-    """Only hr_admin or it_admin may trigger training."""
-    if not any(r.endswith("_admin") for r in user.get("roles", [])):
-        raise HTTPException(status_code=403, detail="Admin role required")
+    """Only it_admin may view training data or trigger training."""
+    if "it_admin" not in user.get("roles", []):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="IT Admin role required for training operations",
+        )

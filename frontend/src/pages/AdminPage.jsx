@@ -15,7 +15,20 @@ export default function AdminPage() {
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [deletingBulk, setDeletingBulk] = useState(false)
 
-  const adminInstances = instances.filter(() => user?.roles?.some(r => r.endsWith('_admin')))
+  const isItAdmin = user?.roles?.includes('it_admin')
+
+  if (!isItAdmin) {
+    return (
+      <div style={styles.page}>
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)', width: '100%' }}>
+          <h2>Access Denied</h2>
+          <p style={{ marginTop: 10 }}>Only IT Administrators have access to the Training & Admin page.</p>
+        </div>
+      </div>
+    )
+  }
+
+  const adminInstances = instances.filter(() => user?.roles?.includes('it_admin'))
 
   const loadData = async (key) => {
     if (!key) return

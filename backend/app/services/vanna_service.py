@@ -29,7 +29,7 @@ from vanna.openai import OpenAI_Chat
 from vanna.chromadb import ChromaDB_VectorStore
  
 from app.core.config import get_settings
-from app.db.connection_manager import get_connection, INSTANCE_CONN_STRINGS
+from app.db.connection_manager import get_connection, INSTANCE_CONN_STRINGS, INSTANCE_META
 from app.services.intent_normalizer import normalize_question
  
 settings = get_settings()
@@ -37,6 +37,9 @@ settings = get_settings()
 _INTROSPECTION_MARKER = "allow_llm_to_see_data"
 _RMS_INSTANCE_KEY = "it_rms"
 _CDXP_INSTANCE_KEY = "it_cdxp"
+_POP_INSTANCE_KEY = "it_pop"
+
+_POP_DEFAULT_POLITE_MSG = "I can help you with coal projects having invoice type as EPP in monthly & hourly form. What would you like to know?"
  
 # ─── CDXP: curated table whitelist ───────────────────────────────────────────
 # The CDXP database has 100+ tables. We expose only the subset relevant to the
@@ -288,11 +291,64 @@ def _build_cdxp_constraint(now_str: str, schema_block: str) -> str:
     )
  
  
+def _build_pop_constraint(now_str: str, schema_block: str) -> str:
+    """
+    POP-specific system prompt (Purchase of Power on Oracle DB).
+    Enforces Oracle and SQL syntax, table relationships, status filters, synonyms, and hierarchy guidance.
+    """
+    return (
+        f"CURRENT DATETIME: {now_str}\n\n"
+        "You are a SQL expert for the POP (Purchase of Power) database "
+        "hosted on Oracle Database.\n\n"
+
+        "STRICT RULES — you MUST follow these before writing any database queries:\n"
+        "1. Only use tables and columns listed in the schema below and do NOT invent, guess, or abbreviate any table or column name.\n"
+        "   *** CRITICAL: Oracle, SQL Syntax Rules ***\n"
+        "   - Use standard Oracle, SQL syntax.\n"
+        "   - Use FETCH FIRST n ROWS ONLY for limiting rows (never TOP n or LIMIT n).\n"
+        "   - Use NVL(col, default) or COALESCE for null handling.\n"
+        "   - Use TO_DATE, TO_CHAR, or TRUNC for date handling.\n\n"
+
+        "2. Use NO_MATCH ONLY when the user asks for a concept whose data is stored "
+        "in NO column in the schema. NEVER return NO_MATCH just because a specific "
+        "name, value, or keyword mentioned by the user does not appear in the schema "
+        "— those are filter VALUES supplied at runtime, not column names.\n\n"
+
+        "3. Never use SELECT *. Always name columns explicitly.\n\n"
+
+        "4. Whenever searching for free-text values (IPP names, vendor sites, invoice numbers, "
+        "descriptions, officer names), use UPPER() and LOWER() with LIKE and wildcards.\n"
+        "Example:\n"
+        "   (UPPER(IPP_NAME) LIKE '%THAR POWER%' OR LOWER(IPP_NAME) LIKE '%thar power%')\n\n"
+
+        "5. RESPONSE STYLE: Be direct and minimal.\n"
+        "   a) No rows returned: say exactly 'No matching records found.'\n"
+        "   b) The requested data exists but the value is NULL or empty: say exactly "
+        "'This information has not been populated yet.'\n"
+        "In all other cases, present results silently with no surrounding text.\n\n"
+
+        "6. CONTEXT HISTORY: Previous questions are provided for conversational "
+        "reference only. NEVER reuse, copy, or adapt SQL from previous turns. "
+        "Always generate fresh SQL based solely on the current question and schema.\n\n"
+
+        "7. POP SCOPE & FILTERING GUIDANCE: Must follow these rules:\n"
+        "   1) Scope & Default Filters: Always generate SQL and return data according to Coal fuel type (FUEL_TYPE = 'Coal') and EPP invoice type (INV_TYPE='EPP'). Apply the Monthly & Hourly form/invoice filter (INV_CATEGORY IN ('MONTHLY', 'HOURLY')) ONLY if the target table contains the INV_CATEGORY column. If the target table does NOT contain the INV_CATEGORY column, skip the INV_CATEGORY filter and apply only the Fuel and Invoice Type filters.\n"
+        "   2) Extract ONLY standalone Coal fuel type (FUEL_TYPE = 'Coal'). Under NO circumstances include hybrid fuel types like Coal and Bagasse.\n"
+        "   3) Out-of-Scope Requests: If the user explicitly asks for unsupported fuel types (e.g. RFO, Gas, Solar, Wind, Hydel, Bagasse) or unsupported invoice types (e.g. CPP, Differential, Penalty), do NOT generate SQL and respond with EXACTLY:\n"
+        "      NO_MATCH: I can help you with coal projects having invoice type as EPP in monthly & hourly form. What would you like to know?\n"
+        "   4) Dual Case Matching (UPPER & LOWER): Whenever applying string search/filtering conditions in the WHERE clause, always use BOTH UPPER() and LOWER() together with OR (e.g. (UPPER(col) LIKE '%VAL%' OR LOWER(col) LIKE '%val%')).\n\n"
+
+        f"AVAILABLE SCHEMA:\n{schema_block}\n"
+        "─────────────────────────────────────────\n"
+    )
+
 def _build_constraint(instance_key: str, now_str: str, schema_block: str) -> str:
     if instance_key == _RMS_INSTANCE_KEY:
         return _build_rms_constraint(now_str, schema_block)
     if instance_key == _CDXP_INSTANCE_KEY:
         return _build_cdxp_constraint(now_str, schema_block)
+    if instance_key == _POP_INSTANCE_KEY:
+        return _build_pop_constraint(now_str, schema_block)
     return _build_meetingsphere_constraint(now_str, schema_block)
  
  
@@ -365,8 +421,29 @@ def _make_vanna(instance_key: str) -> OpenAIVanna:
         instance_key=instance_key,
     )
  
-    conn_str = INSTANCE_CONN_STRINGS[instance_key]
-    vn.connect_to_mssql(odbc_conn_str=conn_str)
+    meta = INSTANCE_META.get(instance_key, {})
+    db_type = meta.get("db_type", "sqlserver")
+
+    if db_type == "oracle":
+        def run_sql_oracle(sql: str):
+            import pandas as pd
+            clean_sql = sql.strip().rstrip(';').strip()
+            conn = get_connection(instance_key)
+            try:
+                df = pd.read_sql(clean_sql, conn)
+                return df
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error(f"[{instance_key}] Oracle run_sql error: {e}")
+                return None
+            finally:
+                conn.close()
+
+        vn.run_sql = run_sql_oracle
+    else:
+        conn_str = INSTANCE_CONN_STRINGS[instance_key]
+        vn.connect_to_mssql(odbc_conn_str=conn_str)
+
     return vn
  
  
@@ -383,55 +460,72 @@ def get_vanna(instance_key: str) -> OpenAIVanna:
  
 def _load_schema(instance_key: str) -> dict[str, list[str]]:
     """
-    Query INFORMATION_SCHEMA to get all user tables and their columns.
+    Query INFORMATION_SCHEMA or Oracle catalog to get all user tables and their columns.
     Result is cached for the lifetime of the process, per instance_key.
- 
-    For "it_cdxp": only tables in CDXP_ALLOWED_TABLES are retained so the
-    schema block stays compact and the LLM is never distracted by the 80+
-    unrelated tables in that database.
     """
     if instance_key in _schema_cache:
         return _schema_cache[instance_key]
- 
+
     with _schema_lock:
         if instance_key in _schema_cache:
             return _schema_cache[instance_key]
- 
-        vn = get_vanna(instance_key)
-        df = vn.run_sql("""
-            SELECT
-                t.TABLE_SCHEMA,
-                t.TABLE_NAME,
-                c.COLUMN_NAME,
-                c.DATA_TYPE
-            FROM INFORMATION_SCHEMA.TABLES  t
-            JOIN INFORMATION_SCHEMA.COLUMNS c
-              ON  c.TABLE_NAME   = t.TABLE_NAME
-              AND c.TABLE_SCHEMA = t.TABLE_SCHEMA
-            WHERE t.TABLE_TYPE   = 'BASE TABLE'
-            ORDER BY t.TABLE_SCHEMA, t.TABLE_NAME, c.ORDINAL_POSITION
-        """)
- 
+
+        meta = INSTANCE_META.get(instance_key, {})
+        db_type = meta.get("db_type", "sqlserver")
+
         schema: dict[str, list[str]] = {}
-        if df is not None:
-            for _, row in df.iterrows():
-                tbl_schema = row["TABLE_SCHEMA"]
-                tbl        = row["TABLE_NAME"]
-                col        = f"{row['COLUMN_NAME']} ({row['DATA_TYPE']})"
- 
-                # For CDXP, skip tables that are not in the whitelist
-                if instance_key == _CDXP_INSTANCE_KEY and tbl not in CDXP_ALLOWED_TABLES:
-                    continue
- 
-                # Use "schema.table" as the key so the LLM sees the full
-                # qualified name. For non-dbo schemas this is important.
-                if tbl_schema and tbl_schema.lower() != "dbo":
-                    key = f"{tbl_schema}.{tbl}"
-                else:
+
+        if db_type == "oracle":
+            try:
+                conn = get_connection(instance_key)
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT OWNER, TABLE_NAME, COLUMN_NAME, DATA_TYPE
+                    FROM ALL_TAB_COLUMNS
+                    WHERE OWNER = 'POP'
+                    ORDER BY OWNER, TABLE_NAME, COLUMN_ID
+                """)
+                rows = cursor.fetchall()
+                for owner, tbl, col_name, data_type in rows:
+                    col = f"{col_name} ({data_type})"
                     key = tbl
- 
-                schema.setdefault(key, []).append(col)
- 
+                    schema.setdefault(key, []).append(col)
+                conn.close()
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error(f"[{instance_key}] Oracle _load_schema error: {e}")
+        else:
+            vn = get_vanna(instance_key)
+            df = vn.run_sql("""
+                SELECT
+                    t.TABLE_SCHEMA,
+                    t.TABLE_NAME,
+                    c.COLUMN_NAME,
+                    c.DATA_TYPE
+                FROM INFORMATION_SCHEMA.TABLES  t
+                JOIN INFORMATION_SCHEMA.COLUMNS c
+                  ON  c.TABLE_NAME   = t.TABLE_NAME
+                  AND c.TABLE_SCHEMA = t.TABLE_SCHEMA
+                WHERE t.TABLE_TYPE   = 'BASE TABLE'
+                ORDER BY t.TABLE_SCHEMA, t.TABLE_NAME, c.ORDINAL_POSITION
+            """)
+
+            if df is not None:
+                for _, row in df.iterrows():
+                    tbl_schema = row["TABLE_SCHEMA"]
+                    tbl        = row["TABLE_NAME"]
+                    col        = f"{row['COLUMN_NAME']} ({row['DATA_TYPE']})"
+
+                    if instance_key == _CDXP_INSTANCE_KEY and tbl not in CDXP_ALLOWED_TABLES:
+                        continue
+
+                    if tbl_schema and tbl_schema.lower() != "dbo":
+                        key = f"{tbl_schema}.{tbl}"
+                    else:
+                        key = tbl
+
+                    schema.setdefault(key, []).append(col)
+
         _schema_cache[instance_key] = schema
         return schema
  
@@ -535,11 +629,9 @@ def _validate_sql_against_schema(sql: str, schema: dict[str, list[str]]) -> Opti
         "FIRST_VALUE", "LAST_VALUE",
         "ABS", "CEILING", "FLOOR", "ROUND", "POWER", "SQRT", "SIGN",
         "NEWID", "SCOPE_IDENTITY",
-        # Schema qualifiers
-        "DBO", "SYS", "INFORMATION_SCHEMA", "ROWS", "FETCH", "NEXT", "ONLY",
-        # CDXP schema qualifiers — both the correct prefix and the common
-        # hallucination ("CDXP.") so neither triggers the column validator.
-        "CPPA_CA", "CDXP",
+        # Schema qualifiers & Oracle keywords
+        "DBO", "SYS", "INFORMATION_SCHEMA", "ROWS", "ROW", "FETCH", "FIRST", "NEXT", "ONLY", "NVL", "TO_DATE", "TO_CHAR", "TRUNC", "ROWNUM",
+        "POP", "CPPA_CA", "CDXP",
     }
  
     col_tokens = re.findall(r'\b([A-Za-z_]\w*)\b', sql_no_strings)
@@ -695,11 +787,32 @@ def _cdxp_domain_block() -> str:
     )
  
  
+def _pop_domain_block() -> str:
+    """
+    POP (Power Purchase & Invoice Information) NL-summary rules and domain guidance.
+    """
+    return (
+        "DOMAIN KNOWLEDGE — POP (Power Purchase & Invoice Information):\n"
+        "You are summarizing results from the POP Power Purchase & Invoice Information system.\n"
+        "Hierarchy: Plant -> Site -> Fuel -> Invoice Type -> Blocks -> Components.\n\n"
+        "STATUS & HISTORICAL RULES:\n"
+        "STRICT RULES:\n"
+        "1. Never mention how many rows or records were returned.\n"
+        "2. Never expose raw table names, column names, or technical schema details.\n"
+        "3. Never suggest additional steps or workarounds.\n"
+        "4. If data was found, confirm it in simple, business-friendly terms.\n"
+        "5. If no data was found, say 'No matching records found.' only.\n"
+        "6. If a value is NULL or empty, say 'This information has not been populated yet.' only."
+    )
+
+
 def _domain_block(instance_key: str) -> str:
     if instance_key == _RMS_INSTANCE_KEY:
         return _rms_domain_block()
     if instance_key == _CDXP_INSTANCE_KEY:
         return _cdxp_domain_block()
+    if instance_key == _POP_INSTANCE_KEY:
+        return _pop_domain_block()
     return _meetingsphere_domain_block()
  
  
@@ -793,22 +906,25 @@ def run_query(instance_key: str, question: str, summary_question: Optional[str] 
     schema = _load_schema(instance_key)
     schema_block = _format_schema_block(schema)
  
+    # ── POP: Proactive out-of-scope keyword interception ──────────────────────
     try:
+
         sql = vn.generate_sql(
             question=normalized_question,
             allow_llm_to_see_data=True,
             schema_constraint=schema_block,
         )
- 
+
         if not sql:
+            err_msg = _POP_DEFAULT_POLITE_MSG if instance_key == _POP_INSTANCE_KEY else "I wasn't able to understand your question well enough to search for an answer. Could you try rephrasing it?"
             return {
                 "sql": None, "results": None,
                 "normalized_question": normalized_question,
                 "normalization_method": norm_method,
                 "nl_summary": None,
-                "error": "I wasn't able to understand your question well enough to search for an answer. Could you try rephrasing it?",
+                "error": err_msg,
             }
- 
+
         if sql.strip().startswith("NO_MATCH:"):
             user_msg = sql.strip().removeprefix("NO_MATCH:").strip()
             return {
@@ -818,7 +934,7 @@ def run_query(instance_key: str, question: str, summary_question: Optional[str] 
                 "nl_summary": None,
                 "error": user_msg,
             }
- 
+
         # ── CDXP: autocorrect hallucinated schema prefix ──────────────────────
         # The LLM occasionally writes "CDXP.TableName" (using the database name
         # as a schema) instead of the correct "CPPA_CA.TableName". Silently fix
@@ -857,7 +973,9 @@ def run_query(instance_key: str, question: str, summary_question: Optional[str] 
         # ── Execute ───────────────────────────────────────────────────────────
         df = vn.run_sql(sql)
         if df is not None:
+            df = df.drop_duplicates()
             import math
+
             def sanitize(val):
                 if val is None:
                     return None
