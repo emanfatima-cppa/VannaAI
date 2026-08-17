@@ -67,7 +67,7 @@ def _fetch_ddl_sqlserver(instance_key: str) -> list[str]:
             type_str = data_type
             if max_len:
                 type_str += f"({max_len})"
-            null_str = "NULL" if nullable == "YES" else "NOT NULL"
+            null_str = "NULL" if nullable == "YES" else "NOT NULL" 
             col_defs.append(f"    {col_name} {type_str} {null_str}")
 
         ddl = f"CREATE TABLE [{schema}].[{table}] (\n"
@@ -190,4 +190,4 @@ def _fetch_fk_oracle(instance_key: str) -> list[str]:
     finally:
         conn.close()
 
-    return docs
+    return docs

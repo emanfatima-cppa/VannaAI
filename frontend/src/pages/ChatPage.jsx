@@ -262,7 +262,7 @@ export default function ChatPage() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={activeInstance ? `Ask about ${activeInstance.label}… (Press Enter to send, Shift+Enter for new line)` : 'Select a database first'}
+            placeholder={activeInstance ? `Ask Anything…` : 'Select a database first'}
             disabled={!activeInstance || loading}
             rows={1}
           />
@@ -332,8 +332,8 @@ const styles = {
   clearBtn: {
     display: 'flex', alignItems: 'center', gap: 6,
     padding: '6px 14px', borderRadius: 'var(--radius)',
-    background: 'var(--error-dim)', border: '1px solid rgba(239, 68, 68, 0.3)',
-    color: 'var(--error)', fontSize: 12, fontWeight: 500, cursor: 'pointer', transition: 'all 0.15s ease',
+    background: 'transparent', border: 'none',
+    color: 'var(--error)', fontSize: 13, fontWeight: 500, cursor: 'pointer', transition: 'all 0.15s ease',
   },
   messagesWrapper: {
     flex: 1, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column',

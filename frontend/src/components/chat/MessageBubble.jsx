@@ -71,7 +71,7 @@ export default function MessageBubble({ message }) {
           <div style={styles.typingContainer}>
             <div style={styles.typingHeader}>
               <Sparkles size={15} style={{ color: 'var(--accent)', animation: 'blink 1.5s ease-in-out infinite' }} />
-              <span style={styles.typingText}>CORTEXA.AI is thinking & querying database...</span>
+              <span style={styles.typingText}>CPPA AI Assistant is thinking & querying database...</span>
             </div>
             <div style={styles.loadingDots}>
               <span style={{ ...styles.dot, animationDelay: '0s' }} />
@@ -214,8 +214,8 @@ function ErrorBox({ error, sql }) {
 
 const eb = {
   box: {
-    background: 'var(--error-dim)', border: '1px solid rgba(252,129,129,0.25)',
-    borderRadius: 'var(--radius)', padding: '12px 14px',
+    background: 'transparent', border: 'none',
+    borderRadius: 'var(--radius)', padding: '0px', marginBottom: '12px',
   },
   header: { display: 'flex', alignItems: 'flex-start', gap: 9 },
   main: { color: 'var(--error)', fontSize: 13, lineHeight: 1.55 },

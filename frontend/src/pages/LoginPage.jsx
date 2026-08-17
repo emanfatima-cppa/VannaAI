@@ -1,7 +1,7 @@
 // src/pages/LoginPage.jsx
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Eye, EyeOff } from 'lucide-react'
+import { Eye, EyeOff, Zap } from 'lucide-react'
 import { login, loginWindows } from '../services/api'
 import useStore from '../store/useStore'
 import toast from 'react-hot-toast'
@@ -86,7 +86,7 @@ export default function LoginPage() {
               <div style={styles.modalBranding}>
                 <div>
                   <h2 style={styles.modalTitle}>Sign in to access this site</h2>
-                  <p style={styles.modalSubtitle}>Authorization required for Cortexa.AI</p>
+                  <p style={styles.modalSubtitle}>Authorization required for CPPA AI Assistant</p>
                 </div>
               </div>
               
@@ -153,8 +153,9 @@ export default function LoginPage() {
       {/* Background/Standard Login Page Card */}
       <div style={{ ...styles.card, opacity: showWindowsPopup ? 0.3 : 1, transition: 'opacity 0.3s' }}>
         <div style={styles.logo}>
-          <span style={styles.logoMark}>▲</span>
-          <span style={styles.logoText}>CORTEXA<span style={styles.logoAccent}>.AI</span></span>
+          <img src="/cppa-logo.png" alt="CPPA Logo" style={{ height: 42, objectFit: 'contain' }} onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }} />
+          <Zap size={32} style={{ color: 'var(--accent)', flexShrink: 0, display: 'none' }} className="fallback-logo" />
+          <span style={styles.logoText}>CPPA AI Assistant</span>
         </div>
         <p style={styles.subtitle}>Natural language queries across your databases</p>
 
@@ -245,7 +246,7 @@ const styles = {
   },
   logo: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 },
   logoMark: { fontSize: 28, color: 'var(--accent)' },
-  logoText: { fontFamily: 'var(--font-mono)', fontSize: 22, fontWeight: 700, letterSpacing: 2 },
+  logoText: { fontSize: 22, fontWeight: 700 },
   logoAccent: { color: 'var(--accent)' },
   subtitle: { color: 'var(--text-secondary)', marginBottom: 32, fontSize: 13 },
   form: { display: 'flex', flexDirection: 'column', gap: 12 },

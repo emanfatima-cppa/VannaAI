@@ -24,7 +24,14 @@ import os
 import re
 import threading
 from typing import Optional
- 
+
+try:
+    import sqlglot
+    import sqlglot.expressions as exp
+    HAS_SQLGLOT = True
+except ImportError:
+    HAS_SQLGLOT = False
+
 from vanna.openai import OpenAI_Chat
 from vanna.chromadb import ChromaDB_VectorStore
  
@@ -332,11 +339,16 @@ def _build_pop_constraint(now_str: str, schema_block: str) -> str:
         "Always generate fresh SQL based solely on the current question and schema.\n\n"
 
         "7. POP SCOPE & FILTERING GUIDANCE: Must follow these rules:\n"
-        "   1) Scope & Default Filters: Always generate SQL and return data according to Coal fuel type (FUEL_TYPE = 'Coal') and EPP invoice type (INV_TYPE='EPP'). Apply the Monthly & Hourly form/invoice filter (INV_CATEGORY IN ('MONTHLY', 'HOURLY')) ONLY if the target table contains the INV_CATEGORY column. If the target table does NOT contain the INV_CATEGORY column, skip the INV_CATEGORY filter and apply only the Fuel and Invoice Type filters.\n"
+        "   1) Scope & Default Filters: Always generate SQL and return data according to Coal fuel type (FUEL_TYPE = 'Coal') and EPP invoice type (INV_TYPE='EPP' or INVOICE_TYPE='EPP'). Apply the Monthly & Hourly form/invoice filter (INV_CATEGORY IN ('Monthly', 'Hourly')) ONLY if the target table contains the INV_CATEGORY column. Apply IS_DISABLE = 'N' ONLY if the target table contains the IS_DISABLE column. Apply APPROVAL_STATUS filter ('Approved') ONLY if the target table contains the APPROVAL_STATUS column.\n"
         "   2) Extract ONLY standalone Coal fuel type (FUEL_TYPE = 'Coal'). Under NO circumstances include hybrid fuel types like Coal and Bagasse.\n"
         "   3) Out-of-Scope Requests: If the user explicitly asks for unsupported fuel types (e.g. RFO, Gas, Solar, Wind, Hydel, Bagasse) or unsupported invoice types (e.g. CPP, Differential, Penalty), do NOT generate SQL and respond with EXACTLY:\n"
         "      NO_MATCH: I can help you with coal projects having invoice type as EPP in monthly & hourly form. What would you like to know?\n"
-        "   4) Dual Case Matching (UPPER & LOWER): Whenever applying string search/filtering conditions in the WHERE clause, always use BOTH UPPER() and LOWER() together with OR (e.g. (UPPER(col) LIKE '%VAL%' OR LOWER(col) LIKE '%val%')).\n\n"
+        "   4) Dual Case Matching (UPPER & LOWER): Whenever applying string search/filtering conditions in the WHERE clause, always use BOTH UPPER() and LOWER() together with OR (e.g. (UPPER(col) LIKE '%VAL%' OR LOWER(col) LIKE '%val%')).\n"
+        "   5) Disabled Records Filter: Whenever ANY queried table contains an IS_DISABLE column, ALWAYS include a condition to filter out disabled records (e.g. (UPPER(IS_DISABLE) = 'N' OR IS_DISABLE = 'N' OR IS_DISABLE = 'No')).\n"
+        "   6) Approval Status Filter: Whenever ANY queried table contains an APPROVAL_STATUS column, ALWAYS include a condition to filter for approved status (e.g. (UPPER(APPROVAL_STATUS) LIKE '%APPROV%' OR APPROVAL_STATUS = 'Approved')), unless the user explicitly requests unverified, pending, or incomplete records. If ANY table contains BOTH IS_DISABLE and APPROVAL_STATUS columns, apply BOTH filters together.\n"
+        "   7) Deduplication & Top-N / List Limits: Whenever querying or listing entities (e.g. invoices, agreements/PPAs, IPPs, plants, sites) without line-item/component aggregation, ALWAYS use SELECT DISTINCT. When the user requests a specific number of items (e.g. 'list 5 invoices', 'show 10 IPPs', 'top 5 plants'), ensure SELECT DISTINCT is applied so that exactly N distinct/unique entities are returned (e.g. SELECT DISTINCT ... FETCH FIRST n ROWS ONLY) rather than returning duplicate rows of the same entity before reaching the row limit.\n"
+        "   8) Component Name Selection & Filter: Whenever the user asks for component names or filters by component name (e.g. VO&M, FCC, Energy Purchase Price, Fuel Price, NEO), ALWAYS use and filter on STANDARD_COMP_NAME (or STANDARD_COMPONENT_NAME) instead of COMP_NAME in tables that contain STANDARD_COMP_NAME (e.g. CPPA_POP_VERIFIED_DATA_ALL_T). Only use COMP_NAME if the target table lacks STANDARD_COMP_NAME.\n"
+        "   9) Invoice Due Date Priority: When the user asks for the due date of an invoice (e.g. 'give me the due date of this invoice'), ALWAYS prioritize REVISED_FINAL_DUE_DATE if populated, and fall back to FINAL_DUE_DATE (using NVL(REVISED_FINAL_DUE_DATE, FINAL_DUE_DATE) or COALESCE(REVISED_FINAL_DUE_DATE, FINAL_DUE_DATE) AS DUE_DATE). NEVER use DEFAULT_DUE_DATE.\n\n"
 
         f"AVAILABLE SCHEMA:\n{schema_block}\n"
         "─────────────────────────────────────────\n"
@@ -358,6 +370,7 @@ class OpenAIVanna(ChromaDB_VectorStore, OpenAI_Chat):
     def __init__(self, config: dict, instance_key: str):
         ChromaDB_VectorStore.__init__(self, config=config)
         OpenAI_Chat.__init__(self, config=config)
+        
         self.instance_key = instance_key   # ← used to pick the right prompt
  
     def get_sql_prompt(self, question: str, question_sql_list, ddl_list, doc_list, **kwargs):
@@ -435,7 +448,7 @@ def _make_vanna(instance_key: str) -> OpenAIVanna:
             except Exception as e:
                 import logging
                 logging.getLogger(__name__).error(f"[{instance_key}] Oracle run_sql error: {e}")
-                return None
+                raise
             finally:
                 conn.close()
 
@@ -528,8 +541,8 @@ def _load_schema(instance_key: str) -> dict[str, list[str]]:
 
         _schema_cache[instance_key] = schema
         return schema
- 
- 
+
+
 def _format_schema_block(schema: dict[str, list[str]]) -> str:
     """
     Render the schema as a compact, readable block for the prompt.
@@ -541,8 +554,8 @@ def _format_schema_block(schema: dict[str, list[str]]) -> str:
     for table, cols in schema.items():
         lines.append(f"  {table}: {', '.join(cols)}")
     return "\n".join(lines)
- 
- 
+
+
 def invalidate_schema_cache(instance_key: Optional[str] = None) -> None:
     """Call this after DDL changes so the schema is re-fetched on next query."""
     with _schema_lock:
@@ -550,119 +563,104 @@ def invalidate_schema_cache(instance_key: Optional[str] = None) -> None:
             _schema_cache.pop(instance_key, None)
         else:
             _schema_cache.clear()
- 
- 
+
+
 # ─── SQL column/table validator ───────────────────────────────────────────────
- 
-def _validate_sql_against_schema(sql: str, schema: dict[str, list[str]]) -> Optional[str]:
-    if not schema:
+
+def _validate_sql_against_schema(
+    sql: str, schema: dict[str, list[str]], instance_key: Optional[str] = None
+) -> Optional[str]:
+    if not schema or not HAS_SQLGLOT:
         return None
- 
-    sql_upper = sql.upper()
- 
-    # Build known-table set from both bare names and schema-qualified names
-    # e.g. "CPPA_CA.DIARY_HEADER_INTERFACE" → both "CPPA_CA.DIARY_HEADER_INTERFACE"
-    # and "DIARY_HEADER_INTERFACE" are considered known.
+
+    meta = INSTANCE_META.get(instance_key, {}) if instance_key else {}
+    db_type = meta.get("db_type", "sqlserver")
+    glot_dialect = "oracle" if db_type == "oracle" else "tsql"
+
     known_tables_upper: set[str] = set()
     for t in schema:
         known_tables_upper.add(t.upper())
         if "." in t:
             known_tables_upper.add(t.split(".")[-1].upper())
- 
-    # ── Table check ───────────────────────────────────────────────────────────
-    # Match both bare and schema-qualified table references after FROM / JOIN
-    table_tokens = re.findall(
-        r'(?:FROM|JOIN)\s+(?:\[?\w+\]?\.)?\[?(\w+)\]?',
-        sql_upper,
-    )
-    unknown_tables = [t for t in table_tokens if t not in known_tables_upper]
-    if unknown_tables:
-        return (
-            "Sorry, I wasn't able to find the right data for your question. "
-            "Could you try rephrasing it?"
-        )
- 
-    # ── Build alias set ───────────────────────────────────────────────────────
-    table_alias_pattern = re.findall(
-        r'(?:FROM|JOIN)\s+(?:\[?\w+\]?\.)?\[?\w+\]?\s+(?:AS\s+)?(\w+)',
-        sql_upper,
-    )
-    col_alias_pattern = re.findall(r'\bAS\s+(\w+)', sql_upper)
-    known_aliases_upper = set(table_alias_pattern) | set(col_alias_pattern)
- 
-    # ── Strip string literals so their words aren't tokenized ─────────────────
-    sql_no_strings = re.sub(r"'[^']*'", "", sql)
-    sql_no_strings = re.sub(r"--[^\n]*", "", sql_no_strings)
-    sql_no_strings = re.sub(r"/\*.*?\*/", "", sql_no_strings, flags=re.DOTALL)
- 
-    # ── Column check ─────────────────────────────────────────────────────────
-    all_known_cols_upper = {
+
+    all_known_cols_upper: set[str] = {
         col.split(" ")[0].upper()
         for cols in schema.values()
         for col in cols
     }
- 
-    sql_keywords = {
-        # DML / clauses
-        "SELECT", "FROM", "WHERE", "JOIN", "LEFT", "RIGHT", "INNER", "OUTER",
-        "ON", "AND", "OR", "NOT", "IN", "IS", "NULL", "AS", "GROUP", "BY",
-        "ORDER", "HAVING", "DISTINCT", "TOP", "COUNT", "SUM", "AVG", "MIN",
-        "MAX", "CASE", "WHEN", "THEN", "ELSE", "END", "WITH", "SET",
-        "INSERT", "UPDATE", "DELETE", "EXEC", "EXECUTE",
-        "CROSS", "FULL", "PARTITION", "OVER", "UNION", "ALL", "INTO", "VALUES",
-        "ASC", "DESC", "LIMIT", "OFFSET", "LIKE", "BETWEEN", "EXISTS",
-        # Data types
-        "INT", "BIGINT", "SMALLINT", "TINYINT", "BIT",
-        "DECIMAL", "NUMERIC", "FLOAT", "REAL", "MONEY", "SMALLMONEY",
-        "CHAR", "VARCHAR", "NCHAR", "NVARCHAR", "TEXT", "NTEXT",
-        "DATE", "TIME", "DATETIME", "DATETIME2", "SMALLDATETIME", "DATETIMEOFFSET",
-        "BINARY", "VARBINARY", "IMAGE", "UNIQUEIDENTIFIER", "XML", "SQL_VARIANT",
-        # Conversion / scalar functions
-        "CAST", "CONVERT", "TRY_CONVERT", "TRY_CAST", "PARSE", "TRY_PARSE",
-        "COALESCE", "ISNULL", "NULLIF", "IIF", "CHOOSE",
-        "LEN", "LEFT", "RIGHT", "SUBSTRING", "CHARINDEX", "PATINDEX",
-        "UPPER", "LOWER", "LTRIM", "RTRIM", "TRIM", "REPLACE", "STUFF", "CONCAT",
-        "GETDATE", "GETUTCDATE", "SYSDATETIME", "SYSUTCDATETIME",
-        "DATEPART", "DATEDIFF", "DATEADD", "DATEFROMPARTS", "EOMONTH",
-        "YEAR", "MONTH", "DAY", "ISDATE", "FORMAT",
-        "ROW_NUMBER", "RANK", "DENSE_RANK", "NTILE", "LAG", "LEAD",
-        "FIRST_VALUE", "LAST_VALUE",
-        "ABS", "CEILING", "FLOOR", "ROUND", "POWER", "SQRT", "SIGN",
-        "NEWID", "SCOPE_IDENTITY",
-        # Schema qualifiers & Oracle keywords
-        "DBO", "SYS", "INFORMATION_SCHEMA", "ROWS", "ROW", "FETCH", "FIRST", "NEXT", "ONLY", "NVL", "TO_DATE", "TO_CHAR", "TRUNC", "ROWNUM",
-        "POP", "CPPA_CA", "CDXP",
-    }
- 
-    col_tokens = re.findall(r'\b([A-Za-z_]\w*)\b', sql_no_strings)
- 
-    unknown_cols = [
-        tok for tok in col_tokens
-        if tok.upper() not in sql_keywords
-        and tok.upper() not in known_tables_upper
-        and tok.upper() not in known_aliases_upper
-        and tok.upper() not in all_known_cols_upper
-        and not tok.isdigit()
-        and len(tok) > 1
-    ]
- 
-    if unknown_cols:
-        return (
-            "I couldn't find that information in the system. "
-            "The data you're looking for may be stored under a different name or may not be tracked yet."
-        )
- 
-    return None
- 
- 
+
+    try:
+        statements = sqlglot.parse(sql, dialect=glot_dialect)
+        non_empty_stmts = [s for s in statements if s is not None]
+        if len(non_empty_stmts) != 1:
+            return "Only single queries are allowed."
+
+        parsed = non_empty_stmts[0]
+
+        if not isinstance(parsed, exp.Select):
+            return "Only SELECT queries are allowed."
+
+        cte_and_alias_names = set()
+        for cte in parsed.find_all(exp.CTE):
+            if cte.alias:
+                cte_and_alias_names.add(cte.alias.upper())
+
+        for table in parsed.find_all(exp.Table):
+            table_name = table.name.upper()
+            table_this = table.this.name.upper() if hasattr(table.this, "name") else table_name
+
+            if table_name in cte_and_alias_names or table_this in cte_and_alias_names:
+                continue
+
+            db_prefix = table.db.upper() if table.db else None
+            full_name = f"{db_prefix}.{table_name}" if db_prefix else table_name
+
+            if full_name not in known_tables_upper and table_name not in known_tables_upper:
+                return (
+                    "Sorry, I wasn't able to find the right data for your question. "
+                    "Could you try rephrasing it?"
+                )
+
+        select_aliases = set()
+        for alias in parsed.find_all(exp.Alias):
+            if alias.alias:
+                select_aliases.add(alias.alias.upper())
+
+        unknown_cols = []
+        for column in parsed.find_all(exp.Column):
+            col_name = column.name.upper()
+
+            if not col_name or col_name == "*":
+                continue
+
+            if col_name in select_aliases or col_name in cte_and_alias_names:
+                continue
+
+            if col_name not in all_known_cols_upper:
+                unknown_cols.append(col_name)
+
+        if unknown_cols:
+            return (
+                "I couldn't find that information in the system. "
+                "The data you're looking for may be stored under a different name or may not be tracked yet."
+            )
+
+        return None
+
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"[_validate_sql_against_schema] sqlglot parse warning ({instance_key}): {e}")
+        return None
+
+
 # ─── Helpers ──────────────────────────────────────────────────────────────────
- 
+
 def _is_valid_sql(text: str) -> bool:
     if not text:
         return False
     stripped = text.strip().lstrip("(").upper()
     return bool(re.match(
-        r"^(SELECT|INSERT|UPDATE|DELETE|WITH|EXEC|EXECUTE|CREATE|DROP|ALTER|MERGE)",
+        r"^(SELECT|WITH)\b",
         stripped,
     ))
  
@@ -960,7 +958,7 @@ def run_query(instance_key: str, question: str, summary_question: Optional[str] 
                 "error": "I wasn't able to find an answer for that. Try rephrasing your question.",
             }
  
-        schema_error = _validate_sql_against_schema(sql, schema)
+        schema_error = _validate_sql_against_schema(sql, schema, instance_key=instance_key)
         if schema_error:
             return {
                 "sql": None, "results": None,

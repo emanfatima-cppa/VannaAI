@@ -114,7 +114,7 @@ export default function ShareChatPage() {
               return (
                 <div key={idx} style={styles.assistantCard}>
                   <div style={styles.assistantHeader}>
-                    <span style={styles.assistantBadge}>Cortexa AI Response</span>
+                    <span style={styles.assistantBadge}>CPPA AI Assistant Response</span>
                   </div>
 
                   {msg.sql && (
@@ -212,7 +212,7 @@ const styles = {
   sqlCode: { margin: 0, fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', whiteSpace: 'pre-wrap' },
   summaryBox: { fontSize: 14, color: 'var(--text-primary)', lineHeight: 1.6 },
   summaryText: { margin: 0 },
-  errorBox: { padding: 12, background: 'var(--error-dim)', border: '1px solid var(--error)', borderRadius: 'var(--radius)' },
+  errorBox: { padding: '0px 0px 8px 0px', background: 'transparent', border: 'none', borderRadius: 'var(--radius)' },
   errorText: { margin: 0, color: 'var(--error)', fontSize: 13 },
   bottomBar: {
     position: 'fixed', bottom: 0, left: 0, right: 0, background: 'var(--bg-1)', borderTop: '1px solid var(--border)', padding: '14px 24px', zIndex: 100,

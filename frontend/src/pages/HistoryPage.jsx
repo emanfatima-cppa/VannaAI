@@ -125,7 +125,7 @@ export default function HistoryPage() {
           </style>
         </head>
         <body>
-          <h2>Cortexa AI - Query History Report</h2>
+          <h2>CPPA AI Assistant - Query History Report</h2>
           <p class="sub"><strong>Target Database:</strong> ${dbTag} | <strong>Export Date:</strong> ${dateStr} | <strong>Total Queries:</strong> ${filtered.length}</p>
           <hr style="border: 0; border-top: 1px solid #e5e7eb; margin-bottom: 20px;"/>
           ${itemsHtml}
@@ -172,7 +172,7 @@ export default function HistoryPage() {
         doc.setFont('helvetica', 'bold')
         doc.setFontSize(16)
         doc.setTextColor(109, 40, 217)
-        doc.text('Cortexa AI - Query History Report', margin, 18)
+        doc.text('CPPA AI Assistant - Query History Report', margin, 18)
 
         // Subtitle
         doc.setFont('helvetica', 'normal')
@@ -435,7 +435,7 @@ export default function HistoryPage() {
             <p style={{ marginTop: 4, fontSize: 13, color: 'var(--text-muted)' }}>
               {search
                 ? 'No history matches your search filter.'
-                : 'Queries you ask Cortexa AI will be automatically saved to your history here.'}
+                : 'Queries you ask CPPA AI Assistant will be automatically saved to your history here.'}
             </p>
           </div>
         ) : (

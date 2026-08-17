@@ -1,7 +1,7 @@
 // src/components/layout/Sidebar.jsx
 import { useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Database, MessageSquare, History, Settings, LogOut, RefreshCw, Sun, Moon } from 'lucide-react'
+import { Database, MessageSquare, History, Settings, LogOut, RefreshCw, Sun, Moon, Zap } from 'lucide-react'
 import useStore from '../../store/useStore'
 import { fetchInstances, logoutUser } from '../../services/api'
 import toast from 'react-hot-toast'
@@ -35,8 +35,9 @@ export default function Sidebar() {
     <aside style={styles.sidebar}>
       {/* Logo */}
       <div style={styles.brand}>
-        <span style={styles.brandMark}>▲</span>
-        <span style={styles.brandText}>CORTEXA<span style={styles.brandAccent}>.AI</span></span>
+        <img src="/cppa-logo.png" alt="CPPA Logo" style={{ height: 28, objectFit: 'contain' }} onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }} />
+        <Zap size={22} style={{ color: 'var(--accent)', flexShrink: 0, display: 'none' }} className="fallback-logo" />
+        <span style={styles.brandText}>CPPA AI Assistant</span>
       </div>
 
       {/* User pill */}
@@ -130,7 +131,7 @@ const styles = {
   },
   brand: { display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 8, marginBottom: 16 },
   brandMark: { fontSize: 20, color: 'var(--accent)' },
-  brandText: { fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 700, letterSpacing: 2 },
+  brandText: { fontSize: 15, fontWeight: 700, whiteSpace: 'nowrap' },
   brandAccent: { color: 'var(--accent)' },
   userPill: {
     display: 'flex', alignItems: 'center', gap: 10,
