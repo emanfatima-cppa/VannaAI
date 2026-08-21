@@ -91,15 +91,15 @@ export default function Sidebar() {
 
       {/* Theme Toggle */}
       <button style={styles.themeToggleBtn} onClick={toggleTheme}>
-        {theme === 'dark' ? <Sun size={14} style={{ color: 'var(--warning)' }} /> : <Moon size={14} style={{ color: 'var(--accent)' }} />}
-        <span style={{ flex: 1 }}>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
+        {theme === 'dark' ? <Moon size={14} style={{ color: 'var(--accent)' }} /> : <Sun size={14} style={{ color: 'var(--warning)' }} />}
+        <span style={{ flex: 1 }}>{theme === 'dark' ? 'Dark Mode' : 'Light Mode'}</span>
         <div style={{
           ...styles.toggleTrack,
-          background: theme === 'dark' ? 'var(--bg-3)' : 'var(--accent)',
+          background: theme === 'dark' ? 'var(--accent)' : 'var(--bg-3)',
         }}>
           <div style={{
             ...styles.toggleThumb,
-            transform: theme === 'dark' ? 'translateX(0)' : 'translateX(14px)',
+            transform: theme === 'dark' ? 'translateX(14px)' : 'translateX(0)',
           }} />
         </div>
       </button>
