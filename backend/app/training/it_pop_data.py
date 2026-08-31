@@ -15,17 +15,33 @@ IT_POP_TRAINING: dict = {
         - Strict Column-Existence Filtering Principle: Apply default domain filters ONLY IF the corresponding column exists in the queried table. If the column is present, the filter MUST be applied. If the column is absent from the target table, omit that filter:
         - Fuel Type Filter: Extract ONLY standalone Coal fuel type (FUEL_TYPE = 'Coal') whenever target table contains FUEL_TYPE column. Do NOT include hybrid fuel types like Coal and Bagasse in any case.
         - Invoice Type Filter: Extract ONLY EPP invoice type (INV_TYPE / INVOICE_TYPE = 'EPP') whenever target table contains INV_TYPE / INVOICE_TYPE column.
+        - Invoice Sub-Type Filter: Extract ONLY EPP invoice sub-type (INV_SUB_TYPE = 'EPP') whenever target table contains INV_SUB_TYPE column.
         - Invoice Category Filter: Extract ONLY Monthly and Hourly invoices (INV_CATEGORY IN ('Monthly', 'Hourly')) whenever target table contains INV_CATEGORY column. If absent, omit this filter.
         - Disabled Flag Filter: Include ONLY active/non-disabled records (IS_DISABLE = 'N' or IS_DISABLE = 'No') whenever target table contains IS_DISABLE column.
         - Approval Status Filter: Apply APPROVAL_STATUS = 'Approved' filter BY DEFAULT ONLY when querying the PPA table (CPPA_POP_PPA_DATA_ALL_T). For the Verified table (CPPA_POP_VERIFIED_DATA_ALL_T), APPROVAL_STATUS is 'Approved', but do NOT auto-apply any APPROVAL_STATUS filter by default unless the user specifically mentions or asks for approved status. For the Unverified/Pending table (CPPA_NOT_VERIFIED_ALERT_T), do NOT auto-apply any approved filter — filter by status ONLY if the user explicitly asks for a specific status.
-        - Deduplication & Top-N / List Limits: ALWAYS use SELECT DISTINCT when querying lists of entities (such as IPPs, PPAs, Invoices) to prevent duplicate rows from multi-line or component-level tables. When the user asks for a limited count or list (e.g., "list 5 invoices", "show top 10 IPPs", "list 5 Coal plants"), ensure SELECT DISTINCT is applied so that exactly N unique/distinct records are returned (e.g., SELECT DISTINCT ... FETCH FIRST 5 ROWS ONLY) rather than returning duplicate rows of the same entity before reaching the row limit.
-        - Component Name Selection & Filter: When asked for a component name or when filtering by component name (e.g., 'VO&M', 'FCC', 'Fuel Price', 'NEO', component rate/amount/value), ALWAYS select and filter on STANDARD_COMP_NAME (or STANDARD_COMPONENT_NAME) instead of COMP_NAME whenever the target table contains the STANDARD_COMP_NAME column (e.g., CPPA_POP_VERIFIED_DATA_ALL_T). Only use COMP_NAME if the target table does not have STANDARD_COMP_NAME.
+        - Deduplication & Multi-Row Aggregation Handling: Tables in POP often contain multiple rows per invoice where invoice-level, header-level, or general column attributes/amounts are repeated across duplicate rows for the same invoice or entity. Whenever querying, listing, or summing repeated header/invoice-level values (e.g., total verified value of a period, invoice, or entity), ensure duplicate values per invoice are NOT repeatedly summed across duplicate rows. Always apply SELECT DISTINCT, subquery deduplication, or appropriate grouping so that values for the same invoice/entity are counted or displayed only once. When listing limited records (e.g. 'list 5 invoices'), ensure SELECT DISTINCT is applied so that exactly N distinct/unique entities are returned (e.g. SELECT DISTINCT ... FETCH FIRST n ROWS ONLY).
+        - Component Inclusion Filter (INC_IN_TOT): When a user asks a generic question (e.g., generic total verified, verified, claimed values, or component totals in general), apply ONLY the YES flag filter (INC_IN_TOT = 'YES'). However, whenever an EXACT specific component name is mentioned in the query (e.g., 'FCC Amount', 'VO&M Amount', 'Fuel Price', 'NEO (kWh)', or any specific component name), do NOT apply any INC_IN_TOT filter — include and show both 'YES' and 'NO' rows for that component (omit the INC_IN_TOT filter).
+        - Component Name Selection & Priority: When asked for a component name or when an overall question involves a component name, check STANDARD_COMP_NAME (or STANDARD_COMPONENT_NAME) first. If the component name mentioned by the user matches a value in STANDARD_COMP_NAME, filter using STANDARD_COMP_NAME. If the component name does NOT match STANDARD_COMP_NAME, fall back to matching and filtering on COMP_NAME. In target tables containing STANDARD_COMP_NAME (e.g., CPPA_POP_VERIFIED_DATA_ALL_T), prefer SELECTing STANDARD_COMP_NAME (or fallback to COMP_NAME).
         - Invoice Due Date Priority: When asked for the due date of an invoice (e.g., "give me the due date of this invoice"), ALWAYS prioritize REVISED_FINAL_DUE_DATE if available; if it is NULL, fall back to FINAL_DUE_DATE (using NVL(REVISED_FINAL_DUE_DATE, FINAL_DUE_DATE) or COALESCE(REVISED_FINAL_DUE_DATE, FINAL_DUE_DATE) AS DUE_DATE). NEVER use DEFAULT_DUE_DATE.
         - Delayed Invoices / Delay Calculation: Whenever the user asks about 'delayed' invoices, payments, or items (e.g., "Which invoice is most delayed"), ALWAYS use GL_DATE_VR (Invoice Verification Accounting Date) against the due date NVL(REVISED_FINAL_DUE_DATE, FINAL_DUE_DATE) for calculating the delay (i.e. (TRUNC(GL_DATE_VR) - TRUNC(NVL(REVISED_FINAL_DUE_DATE, FINAL_DUE_DATE))) AS DELAY_DAYS). NEVER use SYSDATE or GL_DATE_CL for invoice delay calculation.
         - Date / Billing Month Year Expansion: Whenever the user enters a date or billing month with a 2-digit year (e.g., 'Jan-24', 'Jan 24', 'May 26'), ALWAYS expand the 2-digit year to a full 4-digit YYYY format (e.g. 'JAN-2024') in SQL filtering conditions (e.g., UPPER(BILLING_MONTH) = 'JAN-2024' OR BILLING_MONTH = 'JAN-24' OR BILLING_MONTH = 'Jan-24').
+        - Invoice Number Filtering (INVOICE_NO / IPP_INV_NO / DIARY_NO): Categorical columns (FUEL_TYPE, INV_TYPE, INV_SUB_TYPE, INV_CATEGORY) use exact equality =. However, for free-text search / user runtime inputs like invoice numbers (INVOICE_NO, IPP_INV_NO, DIARY_NO), IPP names, and officer names, ALWAYS use LIKE with wildcards % and dual UPPER/LOWER case matching (e.g., (UPPER(INVOICE_NO) LIKE '%2015/01551%' OR LOWER(INVOICE_NO) LIKE '%2015/01551%')). Never use exact = equality for invoice numbers.
         """,
 
-    
+        # ── IPP Name Abbreviations ──────────────────────────────────────────
+        """
+        Use full IPP name when generating SQL. Users typically type short names or abbreviations. 
+        Map these short names to their full IPP names before querying:
+          CPHGCL        → China Power Hub Generation Company (Pvt.) Ltd
+          EPTL          → Engro Powergen Thar (Pvt) Limited
+          HSREL         → Huaneng Shandong Ruyi Energy (Pvt) Ltd
+          LPGCL         → Lakhra Power Generation Company Limited-(Genco-4)
+          LEPCL         → Lucky Electric Power Company Limited
+          TNPTL         → ThalNova Power Thar (Pvt.) Ltd
+          TCB1 or TCB-1 → Thar Coal Block-1 Power Generation Company (Pvt) Limited
+          TEL           → Thar Energy Limited
+        Note: Use the exact full name in SQL filters (e.g., IPP_NAME = 'Engro Powergen Thar (Pvt) Limited').
+        """,
 
         # ── Table: CPPA_POP_PPA_DATA_ALL_T ───────────────────────────────────
         """
@@ -55,7 +71,7 @@ IT_POP_TRAINING: dict = {
         - ADVANCE_PAYMENT        : Yes/No flag indicating whether CPPA provides advance payment/capacity to IPP
         - INT_RATE_TYPE          : Method for interest rate calculation on delayed payments (e.g., KIBOR, RIFO, 1 week, 3 months as per agreement)
         - INT_CALC_FIXED_DAYS    : Fixed number of days used for interest calculation on delayed payments
-        - BLOCK_NO               : Physical dependency and capacity block identifier based on plant complex configuration (e.g., Complex: entire power plant acts as a single block; Solar: Block No per panel array like Block I, Block II; Wind: based on capacity / energy level)
+        - BLOCK_NO               : Physical dependency and capacity block identifier based on plant complex configuration (e.g., Complex: entire power plant acts as a single block; Solar: Block No. per panel array like Block I, Block II; Wind: based on capacity / energy level)
         - PART_OF                : Classification and grouping hierarchy of components
         - FUEL_TYPE              : Source of energy/fuel that the plant uses to produce electricity (e.g., Coal)
         - PPA_BLOCK_EFFECTIVE_TO : PPA block deadline date / effective end date
@@ -72,9 +88,9 @@ IT_POP_TRAINING: dict = {
         - SHOW_ON_DIARY          : Flag indicating whether the component is shown in diary / CDXP portal or not
         - SHOW_ON_INV            : Flag indicating whether the component is shown on the invoice or not
         - INCLUD_IN_CLAIM_PORTAL : Flag indicating whether the particular component will be included in the claim portal or not
-        - INC_IN_TOT             : Flag indicating whether the component is included in the invoice / billing total or not
+        - INC_IN_TOT             : Flag indicating whether the component is included in the invoice / billing amount total or not
         - CREATION_DATE          : System creation timestamp / date when the invoice or record was created
-        - CREATED_BY             : Person / user who created the invoice or record
+        - CREATED_BY             : Person / user who created the record
         - IS_DISABLE             : Status flag indicating if PPA record/component is disabled (Filter: (UPPER(IS_DISABLE) = 'N' OR IS_DISABLE = 'N' OR IS_DISABLE = 'No'))
         - APPROVAL_STATUS        : Status flag indicating PPA approval status (Filter: (UPPER(APPROVAL_STATUS) LIKE '%APPROV%' OR APPROVAL_STATUS = 'Approved'))
         """,
@@ -199,31 +215,31 @@ IT_POP_TRAINING: dict = {
         - REF_BILLING_MONTH      : Billing month of the referenced paid invoice (e.g., MAY-2026) indicating the original service/consumption period of the reference invoice.
         """,
     ],
-    "qa_pairs": [
-        {
-            "question": "For each power producer, how many of their invoices were Rejected and what fuel type do they use?",
-            "sql": "SELECT n.IPP_NAME, p.FUEL_TYPE, COUNT(DISTINCT n.INVOICE_NO) AS REJECTED_INVOICE_COUNT FROM CPPA_NOT_VERIFIED_ALERT_T n JOIN CPPA_POP_PPA_DATA_ALL_T p ON UPPER(n.IPP_NAME) = UPPER(p.IPP_NAME) WHERE (UPPER(p.FUEL_TYPE) = 'COAL' OR LOWER(p.FUEL_TYPE) = 'coal' OR p.FUEL_TYPE = 'Coal') AND (UPPER(n.INV_TYPE) = 'EPP' OR LOWER(n.INV_TYPE) = 'epp' OR n.INV_TYPE = 'EPP') AND (UPPER(n.APPROVAL_STATUS) LIKE '%REJECT%' OR n.APPROVAL_STATUS = 'Invoice Reject') GROUP BY n.IPP_NAME, p.FUEL_TYPE ORDER BY n.IPP_NAME;"
-        },
-        {
-            "question": "Show all rejected invoices for IPPs",
-            "sql": "SELECT IPP_NAME, IPP_SITE, INVOICE_NO, REC_INV_AMOUNT, RECEIVING_DATE, APPROVAL_STATUS, ON_DESK FROM CPPA_NOT_VERIFIED_ALERT_T WHERE (UPPER(INV_TYPE) = 'EPP' OR LOWER(INV_TYPE) = 'epp' OR INV_TYPE = 'EPP') AND (UPPER(APPROVAL_STATUS) LIKE '%REJECT%' OR APPROVAL_STATUS = 'Invoice Reject');"
-        },
-        {
-            "question": "Which invoice is most delayed",
-            "sql": "SELECT IPP_NAME, IPP_SITE, INVOICE_NO, BILLING_MONTH, GL_DATE_VR, NVL(REVISED_FINAL_DUE_DATE, FINAL_DUE_DATE) AS DUE_DATE, (TRUNC(GL_DATE_VR) - TRUNC(NVL(REVISED_FINAL_DUE_DATE, FINAL_DUE_DATE))) AS DELAY_DAYS, TOTAL_VERIFIED_VALUE FROM CPPA_POP_VERIFIED_DATA_ALL_T WHERE (UPPER(FUEL_TYPE) = 'COAL' OR LOWER(FUEL_TYPE) = 'coal' OR FUEL_TYPE = 'Coal') AND (UPPER(INV_TYPE) = 'EPP' OR LOWER(INV_TYPE) = 'epp' OR INV_TYPE = 'EPP') AND (UPPER(INV_CATEGORY) IN ('MONTHLY', 'HOURLY') OR LOWER(INV_CATEGORY) IN ('monthly', 'hourly') OR INV_CATEGORY IN ('Monthly', 'Hourly')) AND NVL(REVISED_FINAL_DUE_DATE, FINAL_DUE_DATE) IS NOT NULL AND GL_DATE_VR IS NOT NULL ORDER BY (TRUNC(GL_DATE_VR) - TRUNC(NVL(REVISED_FINAL_DUE_DATE, FINAL_DUE_DATE))) DESC FETCH FIRST 1 ROWS ONLY;"
-        },
-        {
-            "question": "Please tell me the total verified value of EPP Invoices of Engro",
-            "sql": "SELECT SUM(TOTAL_VERIFIED_VALUE) AS TOTAL_VERIFIED_VALUE FROM CPPA_POP_VERIFIED_DATA_ALL_T WHERE (UPPER(FUEL_TYPE) = 'COAL' OR LOWER(FUEL_TYPE) = 'coal' OR FUEL_TYPE = 'Coal') AND (UPPER(INV_TYPE) = 'EPP' OR LOWER(INV_TYPE) = 'epp' OR INV_TYPE = 'EPP') AND (UPPER(INV_CATEGORY) IN ('MONTHLY', 'HOURLY') OR LOWER(INV_CATEGORY) IN ('monthly', 'hourly') OR INV_CATEGORY IN ('Monthly', 'Hourly')) AND (UPPER(IPP_NAME) LIKE '%ENGRO%' OR LOWER(IPP_NAME) LIKE '%engro%');"
-        },
-        {
-            "question": "Show all verified EPP invoices for Coal IPPs",
-            "sql": "SELECT IPP_NAME, INVOICE_NO, BILLING_MONTH, INV_CATEGORY, TOTAL_CLAIMED_VALUE, TOTAL_VERIFIED_VALUE FROM CPPA_POP_VERIFIED_DATA_ALL_T WHERE (UPPER(FUEL_TYPE) = 'COAL' OR LOWER(FUEL_TYPE) = 'coal' OR FUEL_TYPE = 'Coal') AND (UPPER(INV_TYPE) = 'EPP' OR LOWER(INV_TYPE) = 'epp' OR INV_TYPE = 'EPP') AND (UPPER(INV_CATEGORY) IN ('MONTHLY', 'HOURLY') OR LOWER(INV_CATEGORY) IN ('monthly', 'hourly') OR INV_CATEGORY IN ('Monthly', 'Hourly'));"
-        },
-        {
-            "question": "Show total verified value by IPP vendor for EPP Coal invoices",
-            "sql": "SELECT IPP_NAME, SUM(TOTAL_VERIFIED_VALUE) AS TOTAL_VERIFIED_VALUE FROM CPPA_POP_VERIFIED_DATA_ALL_T WHERE (UPPER(FUEL_TYPE) = 'COAL' OR LOWER(FUEL_TYPE) = 'coal' OR FUEL_TYPE = 'Coal') AND (UPPER(INV_TYPE) = 'EPP' OR LOWER(INV_TYPE) = 'epp' OR INV_TYPE = 'EPP') AND (UPPER(INV_CATEGORY) IN ('MONTHLY', 'HOURLY') OR LOWER(INV_CATEGORY) IN ('monthly', 'hourly') OR INV_CATEGORY IN ('Monthly', 'Hourly')) GROUP BY IPP_NAME ORDER BY TOTAL_VERIFIED_VALUE DESC;"
-        }
-    ],
+    # "qa_pairs": [
+    #     {
+    #         "question": "For each power producer, how many of their invoices were Rejected and what fuel type do they use?",
+    #         "sql": "SELECT n.IPP_NAME, p.FUEL_TYPE, COUNT(DISTINCT n.INVOICE_NO) AS REJECTED_INVOICE_COUNT FROM CPPA_NOT_VERIFIED_ALERT_T n JOIN CPPA_POP_PPA_DATA_ALL_T p ON UPPER(n.IPP_NAME) = UPPER(p.IPP_NAME) WHERE (UPPER(p.FUEL_TYPE) = 'COAL' OR LOWER(p.FUEL_TYPE) = 'coal' OR p.FUEL_TYPE = 'Coal') AND (UPPER(n.INV_TYPE) = 'EPP' OR LOWER(n.INV_TYPE) = 'epp' OR n.INV_TYPE = 'EPP') AND (UPPER(n.APPROVAL_STATUS) LIKE '%REJECT%' OR n.APPROVAL_STATUS = 'Invoice Reject') GROUP BY n.IPP_NAME, p.FUEL_TYPE ORDER BY n.IPP_NAME;"
+    #     },
+    #     {
+    #         "question": "Show all rejected invoices for IPPs",
+    #         "sql": "SELECT IPP_NAME, IPP_SITE, INVOICE_NO, REC_INV_AMOUNT, RECEIVING_DATE, APPROVAL_STATUS, ON_DESK FROM CPPA_NOT_VERIFIED_ALERT_T WHERE (UPPER(INV_TYPE) = 'EPP' OR LOWER(INV_TYPE) = 'epp' OR INV_TYPE = 'EPP') AND (UPPER(APPROVAL_STATUS) LIKE '%REJECT%' OR APPROVAL_STATUS = 'Invoice Reject');"
+    #     },
+    #     {
+    #         "question": "Which invoice is most delayed",
+    #         "sql": "SELECT IPP_NAME, IPP_SITE, INVOICE_NO, BILLING_MONTH, GL_DATE_VR, NVL(REVISED_FINAL_DUE_DATE, FINAL_DUE_DATE) AS DUE_DATE, (TRUNC(GL_DATE_VR) - TRUNC(NVL(REVISED_FINAL_DUE_DATE, FINAL_DUE_DATE))) AS DELAY_DAYS, TOTAL_VERIFIED_VALUE FROM CPPA_POP_VERIFIED_DATA_ALL_T WHERE (UPPER(FUEL_TYPE) = 'COAL' OR LOWER(FUEL_TYPE) = 'coal' OR FUEL_TYPE = 'Coal') AND (UPPER(INV_TYPE) = 'EPP' OR LOWER(INV_TYPE) = 'epp' OR INV_TYPE = 'EPP') AND (UPPER(INV_CATEGORY) IN ('MONTHLY', 'HOURLY') OR LOWER(INV_CATEGORY) IN ('monthly', 'hourly') OR INV_CATEGORY IN ('Monthly', 'Hourly')) AND NVL(REVISED_FINAL_DUE_DATE, FINAL_DUE_DATE) IS NOT NULL AND GL_DATE_VR IS NOT NULL ORDER BY (TRUNC(GL_DATE_VR) - TRUNC(NVL(REVISED_FINAL_DUE_DATE, FINAL_DUE_DATE))) DESC FETCH FIRST 1 ROWS ONLY;"
+    #     },
+    #     {
+    #         "question": "Please tell me the total verified value of EPP Invoices of Engro",
+    #         "sql": "SELECT SUM(TOTAL_VERIFIED_VALUE) AS TOTAL_VERIFIED_VALUE FROM CPPA_POP_VERIFIED_DATA_ALL_T WHERE (UPPER(FUEL_TYPE) = 'COAL' OR LOWER(FUEL_TYPE) = 'coal' OR FUEL_TYPE = 'Coal') AND (UPPER(INV_TYPE) = 'EPP' OR LOWER(INV_TYPE) = 'epp' OR INV_TYPE = 'EPP') AND (UPPER(INV_CATEGORY) IN ('MONTHLY', 'HOURLY') OR LOWER(INV_CATEGORY) IN ('monthly', 'hourly') OR INV_CATEGORY IN ('Monthly', 'Hourly')) AND (UPPER(IPP_NAME) LIKE '%ENGRO%' OR LOWER(IPP_NAME) LIKE '%engro%');"
+    #     },
+    #     {
+    #         "question": "Show all verified EPP invoices for Coal IPPs",
+    #         "sql": "SELECT IPP_NAME, INVOICE_NO, BILLING_MONTH, INV_CATEGORY, TOTAL_CLAIMED_VALUE, TOTAL_VERIFIED_VALUE FROM CPPA_POP_VERIFIED_DATA_ALL_T WHERE (UPPER(FUEL_TYPE) = 'COAL' OR LOWER(FUEL_TYPE) = 'coal' OR FUEL_TYPE = 'Coal') AND (UPPER(INV_TYPE) = 'EPP' OR LOWER(INV_TYPE) = 'epp' OR INV_TYPE = 'EPP') AND (UPPER(INV_CATEGORY) IN ('MONTHLY', 'HOURLY') OR LOWER(INV_CATEGORY) IN ('monthly', 'hourly') OR INV_CATEGORY IN ('Monthly', 'Hourly'));"
+    #     },
+    #     {
+    #         "question": "Show total verified value by IPP vendor for EPP Coal invoices",
+    #         "sql": "SELECT IPP_NAME, SUM(TOTAL_VERIFIED_VALUE) AS TOTAL_VERIFIED_VALUE FROM CPPA_POP_VERIFIED_DATA_ALL_T WHERE (UPPER(FUEL_TYPE) = 'COAL' OR LOWER(FUEL_TYPE) = 'coal' OR FUEL_TYPE = 'Coal') AND (UPPER(INV_TYPE) = 'EPP' OR LOWER(INV_TYPE) = 'epp' OR INV_TYPE = 'EPP') AND (UPPER(INV_CATEGORY) IN ('MONTHLY', 'HOURLY') OR LOWER(INV_CATEGORY) IN ('monthly', 'hourly') OR INV_CATEGORY IN ('Monthly', 'Hourly')) GROUP BY IPP_NAME ORDER BY TOTAL_VERIFIED_VALUE DESC;"
+    #     }
+    # ],
 }
 

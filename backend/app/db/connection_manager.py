@@ -29,28 +29,28 @@ INSTANCE_META: dict[str, dict] = {
         "description": "Salary bands, compensation data",
     },
     "it_meetingsphere": {
-        "label": "IT - Meeting Sphere Project",
+        "label": "Meeting Sphere Project",
         "group": "IT_docs",
         "db_type": "sqlserver",
         "description": "Meeting Sphere project database",
     },
     "it_cdxp": {
-        "label": "IT – CDXP Project",
+        "label": "CDXP Project",
         "group": "IT_docs",
         "db_type": "azure_sql",
         "description": "Resource Management System on Azure SQL",
     },
     "it_rms": {
-        "label": "IT – RMS (ECM Offline)",
+        "label": "RMS (ECM Offline)",
         "group": "IT_docs",
         "db_type": "sqlserver",
         "description": "RMS record management database (ecmoffline_dev)",
     },
     "it_pop": {
-        "label": "IT – POP (Invoices & IPPs)",
+        "label": "POP Analytics",
         "group": "IT_docs",
         "db_type": "oracle",
-        "description": "Power Purchase & Invoice Information System (Verified/Unverified Invoices, IPP Vendors, Block & Fuel-wise data)",
+        "description": "Purchase of Power Analytics (Verified/Unverified Invoices, IPP Vendors, Block & Fuel-wise data)",
     },
 }
 
