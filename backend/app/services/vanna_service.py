@@ -46,7 +46,7 @@ _RMS_INSTANCE_KEY = "it_rms"
 _CDXP_INSTANCE_KEY = "it_cdxp"
 _POP_INSTANCE_KEY = "it_pop"
 
-_POP_DEFAULT_POLITE_MSG = "I can help you with coal projects having invoice type as EPP in monthly & hourly form. What would you like to know?"
+_POP_DEFAULT_POLITE_MSG = "I can help you with coal projects in monthly & hourly form. What would you like to know?"
  
 # ─── CDXP: curated table whitelist ───────────────────────────────────────────
 # The CDXP database has 100+ tables. We expose only the subset relevant to the
@@ -75,7 +75,15 @@ CDXP_ALLOWED_TABLES = {
     "ApiUsers",
     "WP_GC_USER_ACCESS",
 }
- 
+
+# ─── POP: curated table whitelist ─────────────────────────────────────────────
+# Strict table restriction: Only 3 tables are allowed for POP Analytics queries.
+POP_ALLOWED_TABLES = {
+    "CPPA_POP_PPA_DATA_ALL_T",
+    "CPPA_NOT_VERIFIED_ALERT_T",
+    "CPPA_POP_VERIFIED_DATA_ALL_T",
+}
+
 # ─── Schema cache: instance_key → {table: [col, ...]} ────────────────────────
 _schema_cache: dict[str, dict[str, list[str]]] = {}
 _schema_lock = threading.Lock()
@@ -341,17 +349,14 @@ def _build_pop_constraint(now_str: str, schema_block: str) -> str:
         "7. POP SCOPE & FILTERING GUIDANCE: Must follow these rules:\n"
         "   1) Strict Column-Existence Filtering Principle: Apply default domain filters ONLY IF the corresponding column exists in the target table. If the column exists in the table, you MUST apply that filter; if the column is absent from the target table, DO NOT apply that filter:\n"
         "      - Fuel Type Filter (FUEL_TYPE = 'Coal'): MUST apply whenever target table contains FUEL_TYPE column.\n"
-        "      - Invoice Type Filter (INV_TYPE = 'EPP' or INVOICE_TYPE = 'EPP'): MUST apply whenever target table contains INV_TYPE / INVOICE_TYPE column.\n"
-        "      - Invoice Sub-Type Filter (INV_SUB_TYPE = 'EPP'): MUST apply whenever target table contains INV_SUB_TYPE column.\n"
         "      - Invoice Category Filter (INV_CATEGORY IN ('Monthly', 'Hourly')): MUST apply whenever target table contains INV_CATEGORY column.\n"
-        "      - Disabled Records Filter (IS_DISABLE = 'N'): MUST apply whenever target table contains IS_DISABLE column.\n"
-        "      - Approval Status Filter (APPROVAL_STATUS = 'Approved'): MUST apply BY DEFAULT ONLY when querying PPA table CPPA_POP_PPA_DATA_ALL_T (see rule 6).\n"
+        "      - Approval Status Filter on PPA Table: When querying the PPA table (CPPA_POP_PPA_DATA_ALL_T), include records with status 'Approved' or 'Incomplete' (e.g. (UPPER(APPROVAL_STATUS) LIKE '%APPROV%' OR APPROVAL_STATUS = 'Approved' OR UPPER(APPROVAL_STATUS) LIKE '%INCOMPLETE%' OR APPROVAL_STATUS = 'Incomplete')).\n"
         "   2) Extract ONLY standalone Coal fuel type (FUEL_TYPE = 'Coal'). Under NO circumstances include hybrid fuel types like Coal and Bagasse.\n"
-        "   3) Out-of-Scope Requests: If the user explicitly asks for unsupported fuel types (e.g. RFO, Gas, Solar, Wind, Hydel, Bagasse), unsupported invoice types (e.g. CPP, Differential, Penalty), or any IPP other than the supported coal IPPs (China Power Hub Generation company (Pvt.) Ltd, Engro Powergen Thar (Pvt) Limited, Huaneng Shandong Ruyi Energy (Pvt) Ltd, Lakhra Power Generation Company Limited-(Genco-4), Lucky Electric Power Company Limited, ThalNova Power Thar (Pvt.) Ltd, Thar Coal Block-1 Power Generation Company (Pvt) Limited, Thar Energy Limited), do NOT generate SQL and respond with EXACTLY:\n"
-        "      NO_MATCH: I can help you with coal projects having invoice type as EPP in monthly & hourly form. What would you like to know?\n"
-        "   4) Dual Case & Free-Text Wildcard Search (INVOICE_NO, IPP_NAME, etc.): Categorical columns (FUEL_TYPE, INV_TYPE, INV_SUB_TYPE, INV_CATEGORY) use exact equality (=) (e.g. FUEL_TYPE = 'Coal', INV_TYPE = 'EPP', INV_SUB_TYPE = 'EPP', INV_CATEGORY IN ('Monthly', 'Hourly')). However, for free-text search / runtime user inputs such as invoice numbers (INVOICE_NO, IPP_INV_NO, DIARY_NO), IPP names, officer names, and component names, ALWAYS use BOTH UPPER() and LOWER() with the LIKE operator and wildcards (%) instead of exact equality (=). When filtering by invoice numbers (whether the user types a full prefix like 'Invoice/Energy 2015/01551' or short numbers like '2015/01551' or '01551'), filter using LIKE with wildcards on the number substring (e.g. (UPPER(INVOICE_NO) LIKE '%2015/01551%' OR LOWER(INVOICE_NO) LIKE '%2015/01551%')). Never use exact = equality for invoice numbers!\n"
-        "   5) Disabled Records Filter: Whenever ANY queried table contains an IS_DISABLE column, ALWAYS include a condition to filter out disabled records (e.g. (UPPER(IS_DISABLE) = 'N' OR IS_DISABLE = 'N' OR IS_DISABLE = 'No')).\n"
-        "   6) Approval Status Filter: Apply APPROVAL_STATUS = 'Approved' filter BY DEFAULT ONLY when querying the PPA table (CPPA_POP_PPA_DATA_ALL_T). For the Verified table (CPPA_POP_VERIFIED_DATA_ALL_T), APPROVAL_STATUS is 'Approved', but do NOT auto-apply any APPROVAL_STATUS filter by default unless the user specifically mentions or asks for approved status. For the Unverified/Pending table (CPPA_NOT_VERIFIED_ALERT_T), do NOT auto-apply any approved filter — filter by status ONLY if the user explicitly asks for a specific status. If the PPA table contains IS_DISABLE, apply BOTH IS_DISABLE = 'N' AND APPROVAL_STATUS = 'Approved' together.\n"
+        "   3) Out-of-Scope Requests: If the user explicitly asks for unsupported fuel types (e.g. RFO, Gas, Solar, Wind, Hydel, Bagasse), or any IPP other than the supported coal IPPs (China Power Hub Generation company (Pvt.) Ltd, Engro Powergen Thar (Pvt) Limited, Huaneng Shandong Ruyi Energy (Pvt) Ltd, Lakhra Power Generation Company Limited-(Genco-4), Lucky Electric Power Company Limited, ThalNova Power Thar (Pvt.) Ltd, Thar Coal Block-1 Power Generation Company (Pvt) Limited, Thar Energy Limited), do NOT generate SQL and respond with EXACTLY:\n"
+        "      NO_MATCH: I can help you with coal projects in monthly & hourly form. What would you like to know?\n"
+        "   4) Dual Case & Free-Text Wildcard Search (INVOICE_NO, IPP_NAME, etc.): Categorical columns (FUEL_TYPE, INV_CATEGORY) use exact equality (=) (e.g. FUEL_TYPE = 'Coal', INV_CATEGORY IN ('Monthly', 'Hourly')). However, for free-text search / runtime user inputs such as invoice numbers (INVOICE_NO, IPP_INV_NO, DIARY_NO), IPP names, officer names, and component names, ALWAYS use BOTH UPPER() and LOWER() with the LIKE operator and wildcards (%) instead of exact equality (=). When filtering by invoice numbers (whether the user types a full prefix like 'Invoice/Energy 2015/01551' or short numbers like '2015/01551' or '01551'), filter using LIKE with wildcards on the number substring (e.g. (UPPER(INVOICE_NO) LIKE '%2015/01551%' OR LOWER(INVOICE_NO) LIKE '%2015/01551%')). Never use exact = equality for invoice numbers!\n"
+        "   5) Invoice Type and Sub-Type: Do NOT auto-apply any default filter for INV_TYPE, INVOICE_TYPE, or INV_SUB_TYPE. Allow all categories, sub-categories, and invoice sub-types unless the user explicitly requests a specific invoice type.\n"
+        "   6) Approval Status Filter: Apply (UPPER(APPROVAL_STATUS) LIKE '%APPROV%' OR APPROVAL_STATUS = 'Approved' OR UPPER(APPROVAL_STATUS) LIKE '%INCOMPLETE%' OR APPROVAL_STATUS = 'Incomplete') BY DEFAULT ONLY when querying the PPA table (CPPA_POP_PPA_DATA_ALL_T). For the Verified table (CPPA_POP_VERIFIED_DATA_ALL_T) and Unverified/Pending table (CPPA_NOT_VERIFIED_ALERT_T), filter by status ONLY if the user explicitly asks for a specific status.\n"
         "   7) Invoice Table Routing (Verified vs. Unverified/Rejected/Pending):\n"
         "      - Approved / Verified Invoices (General invoices, verified values, verified amounts, approved invoice totals): MUST query CPPA_POP_VERIFIED_DATA_ALL_T. In this table, APPROVAL_STATUS is ONLY 'Approved'. NEVER query this table for rejected, pending, inprocess, or unverified invoices.\n"
         "      - Unverified / Rejected / Pending / Incomplete Invoices: MUST query CPPA_NOT_VERIFIED_ALERT_T. Whenever the user asks about 'rejected invoices', 'invoices rejected', 'rejected count', 'pending invoices', 'inprocess invoices', 'unverified items', or workflow statuses ('Diary Approved', 'Diary Incomplete', 'Invoice Inprocess', 'Invoice Incomplete', 'Invoice', 'Invoice Reject'), YOU MUST QUERY CPPA_NOT_VERIFIED_ALERT_T! For pending invoices, ALWAYS use SELECT DISTINCT on invoice columns to list the actual invoices (e.g. INVOICE_NO, DIARY_NO, IPP_NAME) instead of an aggregate COUNT unless explicitly asked for a count. For general 'pending' queries, include all workflow statuses in the WHERE clause (e.g. APPROVAL_STATUS IN ('Diary Approved', 'Diary Incomplete', 'Invoice Inprocess', 'Invoice Incomplete', 'Invoice', 'Invoice Reject')). However, if the user explicitly asks for a specific status (e.g. 'invoices inprocess'), filter ONLY by that specific status. To get fuel type for unverified/rejected invoices, join CPPA_NOT_VERIFIED_ALERT_T with CPPA_POP_PPA_DATA_ALL_T on IPP_NAME.\n"
@@ -360,7 +365,8 @@ def _build_pop_constraint(now_str: str, schema_block: str) -> str:
         "   10) Component Name Priority (STANDARD_COMP_NAME vs COMP_NAME): When a user question involves a component name (in overall or component-specific queries), check STANDARD_COMP_NAME first. If the component name mentioned by the user matches a value in STANDARD_COMP_NAME, filter using STANDARD_COMP_NAME. If the component name does NOT match STANDARD_COMP_NAME, fall back to matching and filtering on COMP_NAME. In tables containing STANDARD_COMP_NAME (e.g. CPPA_POP_VERIFIED_DATA_ALL_T), prefer SELECTing STANDARD_COMP_NAME (or fallback to COMP_NAME).\n"
         "   11) Invoice Due Date Priority: When the user asks for the due date of an invoice (e.g. 'give me the due date of this invoice'), ALWAYS prioritize REVISED_FINAL_DUE_DATE if populated, and fall back to FINAL_DUE_DATE (using NVL(REVISED_FINAL_DUE_DATE, FINAL_DUE_DATE) or COALESCE(REVISED_FINAL_DUE_DATE, FINAL_DUE_DATE) AS DUE_DATE). NEVER use DEFAULT_DUE_DATE.\n"
         "   12) Date / Billing Month Year Expansion: Whenever the user enters a date or billing month with a 2-digit year (e.g. 'Jan-24', 'Jan 24', 'May 26', '24'), ALWAYS expand the year to the full 4-digit YYYY format (e.g. 'JAN-2024'). Ensure filters account for the 4-digit year format (e.g. (UPPER(BILLING_MONTH) = 'JAN-2024' OR BILLING_MONTH = 'JAN-24' OR BILLING_MONTH = 'Jan-24')).\n"
-        "   13) Delayed Invoices & Delay Calculation: Whenever the user asks about 'delayed' invoices, payments, or items (e.g. 'Which invoice is most delayed', 'delay calculation', 'most delayed invoice'), ALWAYS calculate delay using GL_DATE_VR (Invoice Verification Accounting Date) against the due date NVL(REVISED_FINAL_DUE_DATE, FINAL_DUE_DATE) as: (TRUNC(GL_DATE_VR) - TRUNC(NVL(REVISED_FINAL_DUE_DATE, FINAL_DUE_DATE))) AS DELAY_DAYS, and ORDER BY (TRUNC(GL_DATE_VR) - TRUNC(NVL(REVISED_FINAL_DUE_DATE, FINAL_DUE_DATE))) DESC. NEVER use SYSDATE or GL_DATE_CL for invoice delay calculation!\n\n"
+        "   13) Delayed Invoices & Delay Calculation: Whenever the user asks about 'delayed' invoices, payments, or items (e.g. 'Which invoice is most delayed', 'delay calculation', 'most delayed invoice'), ALWAYS calculate delay using GL_DATE_VR (Invoice Verification Accounting Date) against the due date NVL(REVISED_FINAL_DUE_DATE, FINAL_DUE_DATE) as: (TRUNC(GL_DATE_VR) - TRUNC(NVL(REVISED_FINAL_DUE_DATE, FINAL_DUE_DATE))) AS DELAY_DAYS, and ORDER BY (TRUNC(GL_DATE_VR) - TRUNC(NVL(REVISED_FINAL_DUE_DATE, FINAL_DUE_DATE))) DESC. NEVER use SYSDATE or GL_DATE_CL for invoice delay calculation!\n"
+        "   14) STRICT TABLE RESTRICTION: You MUST ONLY generate queries using these 3 tables: CPPA_POP_PPA_DATA_ALL_T, CPPA_NOT_VERIFIED_ALERT_T, and CPPA_POP_VERIFIED_DATA_ALL_T. NEVER query, join, or reference any other table under any circumstances. If the user asks for information not present in these 3 tables, respond with NO_MATCH.\n\n"
 
         f"AVAILABLE SCHEMA:\n{schema_block}\n"
         "─────────────────────────────────────────\n"
@@ -512,6 +518,8 @@ def _load_schema(instance_key: str) -> dict[str, list[str]]:
                 """)
                 rows = cursor.fetchall()
                 for owner, tbl, col_name, data_type in rows:
+                    if instance_key == _POP_INSTANCE_KEY and tbl.upper() not in POP_ALLOWED_TABLES:
+                        continue
                     col = f"{col_name} ({data_type})"
                     key = tbl
                     schema.setdefault(key, []).append(col)
